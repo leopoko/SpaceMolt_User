@@ -8,9 +8,9 @@
   import { uiStore } from '$lib/stores/ui.svelte';
   import { onMount } from 'svelte';
 
-  let username = $state(authStore.savedUsername);
-  let password = $state(authStore.savedPassword);
-  let serverUrl = $state(connectionStore.serverUrl);
+  let username = $state('');
+  let password = $state('');
+  let serverUrl = $state('');
   let mode = $state<'login' | 'register'>('login');
   let loading = $state(false);
   let errorMsg = $state('');
@@ -43,6 +43,10 @@
   onMount(() => {
     // Apply dark mode from stored preference
     uiStore.setDarkMode(uiStore.darkMode);
+    // Set values after MDC init so outlined labels float with proper notch
+    serverUrl = connectionStore.serverUrl;
+    username = authStore.savedUsername;
+    password = authStore.savedPassword;
     // Connect to server on load
     ws.connect(serverUrl);
   });

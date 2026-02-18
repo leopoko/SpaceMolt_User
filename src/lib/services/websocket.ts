@@ -162,6 +162,9 @@ class WebSocketService {
       case 'error': {
         const errMsg = (msg.message as string) ?? 'Unknown error';
         eventsStore.add({ type: 'error', message: errMsg });
+        if (!authStore.isLoggedIn) {
+          authStore.loginError = errMsg;
+        }
         break;
       }
 
