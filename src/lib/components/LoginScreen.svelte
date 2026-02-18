@@ -14,6 +14,7 @@
   let mode = $state<'login' | 'register'>('login');
   let loading = $state(false);
   let errorMsg = $state('');
+  let showPassword = $state(false);
 
   // Watch for login success
   $effect(() => {
@@ -122,16 +123,24 @@
     </div>
 
     <!-- Password -->
-    <div class="field-row">
+    <div class="field-row password-row">
       <Textfield
         bind:value={password}
         label="Password"
-        type="password"
+        type={showPassword ? 'text' : 'password'}
         variant="outlined"
         style="width:100%"
         input$autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
         onkeydown={handleKeydown}
       />
+      <button
+        class="show-pw-btn"
+        type="button"
+        onclick={() => showPassword = !showPassword}
+        aria-label={showPassword ? 'Hide password' : 'Show password'}
+      >
+        <span class="material-icons">{showPassword ? 'visibility_off' : 'visibility'}</span>
+      </button>
     </div>
 
     {#if errorMsg}
@@ -254,5 +263,27 @@
 
   .link-btn:hover {
     color: #81d4fa;
+  }
+
+  .password-row {
+    position: relative;
+  }
+
+  .show-pw-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #546e7a;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .show-pw-btn:hover {
+    color: #4fc3f7;
   }
 </style>
