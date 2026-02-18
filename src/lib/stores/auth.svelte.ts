@@ -5,6 +5,7 @@ function getStoredItem(key: string): string {
 
 class AuthStore {
   isLoggedIn = $state(false);
+  loginError = $state<string | null>(null);
   username = $state('');
   savedUsername = $state(getStoredItem('spacemolt_username'));
   savedPassword = $state(getStoredItem('spacemolt_password'));

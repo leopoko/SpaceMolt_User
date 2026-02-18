@@ -152,7 +152,13 @@ class WebSocketService {
         break;
       }
 
-      case 'login_failed':
+      case 'login_failed': {
+        const errMsg = (msg.message as string) ?? 'Invalid credentials';
+        authStore.loginError = errMsg;
+        eventsStore.add({ type: 'error', message: errMsg });
+        break;
+      }
+
       case 'error': {
         const errMsg = (msg.message as string) ?? 'Unknown error';
         eventsStore.add({ type: 'error', message: errMsg });

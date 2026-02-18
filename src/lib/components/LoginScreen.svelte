@@ -30,6 +30,15 @@
     }
   });
 
+  // Watch for login_failed response from server
+  $effect(() => {
+    if (authStore.loginError) {
+      loading = false;
+      errorMsg = authStore.loginError;
+      authStore.loginError = null;
+    }
+  });
+
   onMount(() => {
     // Apply dark mode from stored preference
     uiStore.setDarkMode(uiStore.darkMode);
