@@ -1,5 +1,6 @@
 <script lang="ts">
   import { eventsStore } from '$lib/stores/events.svelte';
+  import { ws } from '$lib/services/websocket';
   import type { EventType } from '$lib/types/game';
 
   const filters: Array<{ label: string; value: EventType | 'all' }> = [
@@ -14,6 +15,104 @@
   function formatTime(ts: number): string {
     const d = new Date(ts);
     return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  }
+
+  // ---- Command input ----
+
+  let cmdInput = $state('');
+
+  const HELP_TEXT = [
+    '/help               — このヘルプを表示',
+    '/scan               — 周辺スキャン',
+    '/status             — プレイヤーステータス取得',
+    '/system             — システム情報取得',
+    '/jump <system_id>   — 別システムへジャンプ',
+    '/travel <poi_id>    — POIへ移動',
+    '/dock <station_id>  — ステーションにドック',
+    '/undock             — ドック解除',
+    '/mine <poi_id>      — 採掘開始',
+    '/chat <msg>         — グローバルチャットに送信',
+    '{ ... }             — 生のJSONコマンドを送信',
+    '<その他>            — ローカルチャットとして送信',
+  ].join('\n');
+
+  function handleCommand() {
+    const raw = cmdInput.trim();
+    if (!raw) return;
+
+    cmdInput = '';
+
+    // Show what was entered in the log
+    eventsStore.add({ type: 'info', message: `> ${raw}` });
+
+    // Raw JSON
+    if (raw.startsWith('{')) {
+      try {
+        const msg = JSON.parse(raw);
+        ws.send(msg);
+      } catch {
+        eventsStore.add({ type: 'error', message: 'JSONパースエラー' });
+      }
+      return;
+    }
+
+    // Slash commands
+    if (raw.startsWith('/')) {
+      const parts = raw.slice(1).split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      const args = parts.slice(1);
+
+      switch (cmd) {
+        case 'help':
+          eventsStore.add({ type: 'info', message: HELP_TEXT });
+          break;
+        case 'scan':
+          ws.scan();
+          break;
+        case 'status':
+          ws.getStatus();
+          break;
+        case 'system':
+          ws.getSystem();
+          break;
+        case 'jump':
+          if (args[0]) ws.jump(args[0], args[1]);
+          else eventsStore.add({ type: 'error', message: '使い方: /jump <system_id>' });
+          break;
+        case 'travel':
+          if (args[0]) ws.travel(args[0]);
+          else eventsStore.add({ type: 'error', message: '使い方: /travel <poi_id>' });
+          break;
+        case 'dock':
+          if (args[0]) ws.dock(args[0]);
+          else eventsStore.add({ type: 'error', message: '使い方: /dock <station_id>' });
+          break;
+        case 'undock':
+          ws.undock();
+          break;
+        case 'mine':
+          if (args[0]) ws.mine(args[0]);
+          else eventsStore.add({ type: 'error', message: '使い方: /mine <poi_id>' });
+          break;
+        case 'chat':
+          if (args.length > 0) ws.sendChat(args.join(' '));
+          else eventsStore.add({ type: 'error', message: '使い方: /chat <message>' });
+          break;
+        default:
+          eventsStore.add({ type: 'error', message: `不明なコマンド: /${cmd}  (/help で一覧表示)` });
+      }
+      return;
+    }
+
+    // Plain text → send as local chat
+    ws.sendChat(raw, 'local');
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCommand();
+    }
   }
 </script>
 
@@ -42,6 +141,21 @@
     {:else}
       <div class="empty">No events</div>
     {/each}
+  </div>
+
+  <!-- Command input -->
+  <div class="cmd-row">
+    <span class="cmd-prompt">›</span>
+    <input
+      class="cmd-input"
+      type="text"
+      placeholder="コマンドまたはチャット  (/help で一覧)"
+      bind:value={cmdInput}
+      onkeydown={onKeyDown}
+      spellcheck="false"
+      autocomplete="off"
+    />
+    <button class="cmd-send" onclick={handleCommand} title="Send">⏎</button>
   </div>
 </div>
 
@@ -104,6 +218,8 @@
     line-height: 1.5;
     padding: 1px 0;
     border-bottom: 1px solid rgba(255,255,255,0.03);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .ts {
@@ -129,4 +245,51 @@
     padding: 8px;
     text-align: center;
   }
+
+  /* ---- Command input row ---- */
+  .cmd-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border-top: 1px solid rgba(79, 195, 247, 0.1);
+    flex-shrink: 0;
+    background: rgba(0,0,0,0.3);
+  }
+
+  .cmd-prompt {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    color: #4fc3f7;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .cmd-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: #b0bec5;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.68rem;
+    padding: 2px 0;
+    caret-color: #4fc3f7;
+  }
+
+  .cmd-input::placeholder { color: #2e4050; }
+
+  .cmd-send {
+    background: none;
+    border: none;
+    color: #37474f;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 2px 4px;
+    border-radius: 2px;
+    transition: color 0.1s;
+    flex-shrink: 0;
+  }
+
+  .cmd-send:hover { color: #4fc3f7; }
 </style>

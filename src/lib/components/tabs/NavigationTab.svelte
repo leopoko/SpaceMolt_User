@@ -126,11 +126,12 @@
         {#if systemStore.nearbyPlayers.length > 0}
           <p class="tab-section-title" style="margin-top:12px">Nearby Players</p>
           <div class="player-list">
-            {#each systemStore.nearbyPlayers as p}
+            {#each systemStore.nearbyPlayers as np}
               <div class="player-item">
-                <span class="material-icons" style="font-size:14px;color:#78909c">person</span>
-                <span class="player-name">{p.username}</span>
-                <span class="player-ship mono">{p.ship_type}</span>
+                <span class="material-icons" style="font-size:14px;color:{np.in_combat ? '#ff7043' : '#78909c'}"
+                >{np.in_combat ? 'local_fire_department' : 'person'}</span>
+                <span class="player-name">{np.username}</span>
+                <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
               </div>
             {/each}
           </div>
