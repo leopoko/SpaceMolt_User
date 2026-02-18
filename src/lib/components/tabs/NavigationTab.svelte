@@ -1,7 +1,6 @@
 <script lang="ts">
   import Button, { Label } from '@smui/button';
   import Card, { Content } from '@smui/card';
-  import List, { Item, Text, PrimaryText, SecondaryText, Graphic } from '@smui/list';
   import { systemStore } from '$lib/stores/system.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
@@ -10,10 +9,23 @@
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
   };
 
+  // Human-readable label for each security level (fixes "NULL" display)
+  const secLabel: Record<string, string> = {
+    high: 'HIGH', medium: 'MEDIUM', low: 'LOW', null: 'UNREGULATED'
+  };
+
   const poiIcons: Record<string, string> = {
     station: 'home', asteroid: 'lens', gate: 'transit_enterexit',
     wreck: 'broken_image', planet: 'public', anomaly: 'help_outline'
   };
+
+  function secDisplay(level: string | null | undefined): { color: string; label: string } {
+    const k = (level ?? 'null') as string;
+    return {
+      color: secColor[k] ?? '#9c27b0',
+      label: secLabel[k] ?? k.toUpperCase()
+    };
+  }
 
   function doJump(systemId: string, systemName: string) {
     ws.jump(systemId, systemName);
@@ -36,8 +48,8 @@
   }
 </script>
 
-<div class="three-col">
-  <!-- Current System Info -->
+<div class="two-col">
+  <!-- Current System Info + Points of Interest -->
   <Card class="space-card">
     <Content>
       <div class="section-head">
@@ -47,45 +59,81 @@
 
       {#if systemStore.data}
         <h2 class="system-name">{systemStore.name}</h2>
-        <div class="sec-badge" style="color:{secColor[systemStore.securityLevel]}">
-          Security: {systemStore.securityLevel.toUpperCase()}
+        {@const sys = secDisplay(systemStore.securityLevel)}
+        <div class="sec-badge" style="color:{sys.color}">
+          Security: {sys.label}
         </div>
         {#if systemStore.data.description}
           <p class="sys-desc">{systemStore.data.description}</p>
         {/if}
 
+        <!-- Points of Interest with Travel / Dock / Undock actions -->
         <p class="tab-section-title" style="margin-top:12px">Points of Interest</p>
         {#if systemStore.pois.length > 0}
-          <List nonInteractive dense>
+          <div class="poi-list">
             {#each systemStore.pois as poi}
-              <Item>
-                <Graphic class="material-icons" style="font-size:16px;color:#546e7a">
-                  {poiIcons[poi.type] ?? 'place'}
-                </Graphic>
-                <Text>
-                  <PrimaryText style="font-size:0.8rem">{poi.name}</PrimaryText>
-                  <SecondaryText style="font-size:0.68rem">{poi.type} · {poi.player_count} players</SecondaryText>
-                </Text>
-              </Item>
+              {@const isHere = playerStore.poi_id === poi.id}
+              {@const isTravDest = systemStore.travel.in_progress && systemStore.travel.destination_id === poi.id}
+              <div class="poi-item" class:poi-current={isHere} class:poi-traveling={isTravDest}>
+                <div class="poi-left">
+                  <span class="material-icons poi-icon">{poiIcons[poi.type] ?? 'place'}</span>
+                  <div class="poi-info">
+                    <span class="poi-name">
+                      {poi.name}
+                      {#if isHere}<span class="here-chip">DOCKED</span>{/if}
+                      {#if isTravDest}<span class="dest-chip">▶</span>{/if}
+                    </span>
+                    <span class="poi-sub">{poi.type} · {poi.player_count} players</span>
+                  </div>
+                </div>
+                <div class="poi-btns">
+                  {#if isHere && playerStore.isDocked}
+                    <!-- Player is docked here: show Undock -->
+                    <Button variant="outlined" dense onclick={doUndock}>
+                      <Label>Undock</Label>
+                    </Button>
+                  {:else}
+                    <!-- Travel to any POI -->
+                    <Button
+                      variant="outlined"
+                      dense
+                      disabled={systemStore.travel.in_progress || playerStore.isDocked}
+                      onclick={() => doTravel(poi.id)}
+                    >
+                      <Label>Travel</Label>
+                    </Button>
+                    <!-- Dock only available for station-type POIs -->
+                    {#if poi.type === 'station'}
+                      <Button
+                        variant="outlined"
+                        dense
+                        disabled={playerStore.isDocked || systemStore.travel.in_progress}
+                        onclick={() => doDock(poi.id)}
+                      >
+                        <Label>Dock</Label>
+                      </Button>
+                    {/if}
+                  {/if}
+                </div>
+              </div>
             {/each}
-          </List>
+          </div>
         {:else}
           <p class="empty-hint">No POIs found</p>
         {/if}
 
+        <!-- Nearby Players -->
         {#if systemStore.nearbyPlayers.length > 0}
           <p class="tab-section-title" style="margin-top:12px">Nearby Players</p>
-          <List nonInteractive dense>
+          <div class="player-list">
             {#each systemStore.nearbyPlayers as p}
-              <Item>
-                <Graphic class="material-icons" style="font-size:16px;color:#78909c">person</Graphic>
-                <Text>
-                  <PrimaryText style="font-size:0.8rem">{p.username}</PrimaryText>
-                  <SecondaryText style="font-size:0.68rem">{p.ship_type}</SecondaryText>
-                </Text>
-              </Item>
+              <div class="player-item">
+                <span class="material-icons" style="font-size:14px;color:#78909c">person</span>
+                <span class="player-name">{p.username}</span>
+                <span class="player-ship mono">{p.ship_type}</span>
+              </div>
             {/each}
-          </List>
+          </div>
         {/if}
       {:else}
         <p class="empty-hint">No system data. Click Refresh.</p>
@@ -93,20 +141,21 @@
     </Content>
   </Card>
 
-  <!-- Connected Systems / Jump -->
+  <!-- Jump Destinations -->
   <Card class="space-card">
     <Content>
       <p class="tab-section-title">Jump Destinations</p>
       {#if systemStore.connections.length > 0}
         <div class="connection-list">
           {#each systemStore.connections as conn}
+            {@const csec = secDisplay(conn.security_level)}
             <div class="conn-item">
               <div class="conn-info">
-                <span class="conn-name">{conn.system_name}</span>
-                <span class="conn-sec" style="color:{secColor[conn.security_level ?? 'null']}">
-                  {conn.security_level?.toUpperCase() ?? 'NULL'}
-                </span>
-                <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
+                <span class="conn-name">{conn.system_name ?? '—'}</span>
+                <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
+                {#if conn.jump_cost != null}
+                  <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
+                {/if}
               </div>
               <Button
                 variant="outlined"
@@ -125,75 +174,11 @@
 
       {#if systemStore.travel.in_progress}
         <div class="traveling-notice">
-          ► Traveling to {systemStore.travel.destination_name ?? '...'}
+          ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
           {#if systemStore.travel.arrival_tick !== null}
             <br/>ETA: Tick {systemStore.travel.arrival_tick}
           {/if}
         </div>
-      {/if}
-    </Content>
-  </Card>
-
-  <!-- Stations & Actions -->
-  <Card class="space-card">
-    <Content>
-      <p class="tab-section-title">Stations</p>
-      {#if systemStore.stations.length > 0}
-        <div class="station-list">
-          {#each systemStore.stations as station}
-            <div class="station-item">
-              <div class="station-info">
-                <span class="station-name">{station.name}</span>
-                {#if station.base}
-                  <span class="station-type mono">{station.base.type}</span>
-                {/if}
-              </div>
-              <div class="station-btns">
-                <Button
-                  variant="outlined"
-                  dense
-                  disabled={playerStore.isDocked}
-                  onclick={() => doTravel(station.id)}
-                >
-                  <Label>Travel</Label>
-                </Button>
-                <Button
-                  variant="outlined"
-                  dense
-                  disabled={playerStore.isDocked}
-                  onclick={() => doDock(station.id)}
-                >
-                  <Label>Dock</Label>
-                </Button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="empty-hint">No stations in this system</p>
-      {/if}
-
-      {#if playerStore.isDocked}
-        <div style="margin-top:16px">
-          <Button variant="raised" onclick={doUndock} style="width:100%">
-            <Label>Undock</Label>
-          </Button>
-        </div>
-      {/if}
-
-      <!-- Asteroids -->
-      {#if systemStore.asteroids.length > 0}
-        <p class="tab-section-title" style="margin-top:16px">Asteroid Fields</p>
-        <List nonInteractive dense>
-          {#each systemStore.asteroids as ast}
-            <Item>
-              <Graphic class="material-icons" style="font-size:16px;color:#78909c">lens</Graphic>
-              <Text>
-                <PrimaryText style="font-size:0.8rem">{ast.name}</PrimaryText>
-              </Text>
-            </Item>
-          {/each}
-        </List>
       {/if}
     </Content>
   </Card>
@@ -240,18 +225,144 @@
 
   .empty-hint {
     font-size: 0.75rem;
-    color: #263238;
+    color: #546e7a;
     text-align: center;
     padding: 12px 0;
   }
 
-  .connection-list, .station-list {
+  /* ---- POI List ---- */
+
+  .poi-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .poi-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+    gap: 8px;
+  }
+
+  /* Green highlight when docked here */
+  .poi-item.poi-current {
+    background: rgba(76, 175, 80, 0.08);
+    border-color: rgba(76, 175, 80, 0.35);
+  }
+
+  /* Amber highlight when this is the travel destination */
+  .poi-item.poi-traveling {
+    background: rgba(255, 183, 77, 0.06);
+    border-color: rgba(255, 183, 77, 0.25);
+  }
+
+  .poi-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .poi-icon {
+    font-size: 16px;
+    color: #546e7a;
+    flex-shrink: 0;
+  }
+
+  .poi-item.poi-current .poi-icon { color: #4caf50; }
+  .poi-item.poi-traveling .poi-icon { color: #ffb74d; }
+
+  .poi-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .poi-name {
+    font-size: 0.82rem;
+    color: #b0bec5;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .poi-item.poi-current .poi-name { color: #81c784; }
+
+  .poi-sub {
+    font-size: 0.68rem;
+    color: #546e7a;
+  }
+
+  /* "DOCKED" badge shown next to the POI name */
+  .here-chip {
+    font-size: 0.58rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 700;
+    color: #4caf50;
+    background: rgba(76, 175, 80, 0.15);
+    border: 1px solid rgba(76, 175, 80, 0.4);
+    border-radius: 3px;
+    padding: 0 4px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Arrow shown when this POI is the active travel destination */
+  .dest-chip {
+    font-size: 0.7rem;
+    color: #ffb74d;
+    font-weight: 700;
+    animation: pulse 1.5s infinite;
+  }
+
+  .poi-btns {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  /* ---- Nearby Players ---- */
+
+  .player-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .player-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+  }
+
+  .player-name {
+    font-size: 0.8rem;
+    color: #b0bec5;
+    flex: 1;
+  }
+
+  .player-ship {
+    font-size: 0.68rem;
+    color: #546e7a;
+  }
+
+  /* ---- Connection List ---- */
+
+  .connection-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
 
-  .conn-item, .station-item {
+  .conn-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -261,29 +372,22 @@
     border: 1px solid rgba(255,255,255,0.05);
   }
 
-  .conn-info, .station-info {
+  .conn-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
-  .conn-name, .station-name {
+  .conn-name {
     font-size: 0.82rem;
     color: #b0bec5;
   }
 
-  .conn-sec, .station-type {
-    font-size: 0.68rem;
-  }
+  .conn-sec { font-size: 0.68rem; }
 
   .conn-cost {
     font-size: 0.68rem;
     color: #ff9800;
-  }
-
-  .station-btns {
-    display: flex;
-    gap: 4px;
   }
 
   .mono { font-family: 'Roboto Mono', monospace; }

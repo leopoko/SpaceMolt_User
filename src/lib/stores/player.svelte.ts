@@ -1,7 +1,23 @@
 import type { Player, Skill, Mission, Achievement } from '$lib/types/game';
 
+const DOCK_KEY = 'sm_dock_state';
+
 class PlayerStore {
   data = $state<Player | null>(null);
+
+  constructor() {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(DOCK_KEY);
+        if (saved) {
+          const partial = JSON.parse(saved) as Pick<Player, 'status' | 'poi_id'>;
+          this.data = partial as Player;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
 
   get credits(): number { return this.data?.credits ?? 0; }
   get location(): string { return this.data?.location ?? 'Unknown'; }
@@ -21,10 +37,26 @@ class PlayerStore {
     } else {
       this.data = partial as Player;
     }
+    // Persist dock state so it survives page refresh
+    if (this.data?.status) {
+      try {
+        localStorage.setItem(DOCK_KEY, JSON.stringify({
+          status: this.data.status,
+          poi_id: this.data.poi_id ?? null
+        }));
+      } catch {
+        // ignore storage errors (e.g. private browsing quota)
+      }
+    }
   }
 
   reset() {
     this.data = null;
+    try {
+      localStorage.removeItem(DOCK_KEY);
+    } catch {
+      // ignore
+    }
   }
 }
 
