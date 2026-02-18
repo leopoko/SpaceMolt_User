@@ -177,6 +177,20 @@ class WebSocketService {
         const pl = p<{ code?: string; message?: string }>(msg);
         const errMsg = pl.message ?? 'Unknown error';
         console.debug('[WS error] code:', pl.code, '| message:', errMsg);
+
+        // Stale server session after page refresh: auto logout then re-login
+        if (
+          !authStore.isLoggedIn &&
+          errMsg.toLowerCase().includes('already logged in') &&
+          authStore.savedUsername &&
+          authStore.savedPassword
+        ) {
+          console.debug('[WS] Stale session — sending logout then re-login');
+          this.rawSend({ type: 'logout' });
+          setTimeout(() => this.login(authStore.savedUsername, authStore.savedPassword), 200);
+          break;
+        }
+
         eventsStore.add({ type: 'error', message: errMsg });
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
