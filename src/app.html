@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="SpaceMolt Human Player Client" />
+    <title>SpaceMolt</title>
+
+    <!-- Google Fonts: Roboto + Roboto Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Material Icons -->
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+
+    <!-- SMUI Theme CSS (light / dark via media query; JS can override) -->
+    <link
+      rel="stylesheet"
+      href="%sveltekit.assets%/smui.css"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="stylesheet"
+      href="%sveltekit.assets%/smui-dark.css"
+      media="screen and (prefers-color-scheme: dark)"
+    />
+
+    %sveltekit.head%
+  </head>
+  <body
+    data-sveltekit-preload-data="hover"
+    style="margin:0; background:#060a10; color:#c0cfe0;"
+  >
+    <div style="display:contents">%sveltekit.body%</div>
+  </body>
+</html>
