@@ -1,0 +1,212 @@
+/* ============================================================
+   SpaceMolt – Global Space Theme Overrides
+   ============================================================ */
+
+:root {
+  --space-hull-color: #4caf50;
+  --space-shield-color: #2196f3;
+  --space-fuel-color: #ff9800;
+  --space-danger-color: #f44336;
+  --space-warning-color: #ff9800;
+  --space-credit-color: #ffd700;
+  --space-bg: #060a10;
+  --space-surface: #0d1525;
+  --space-border: rgba(79, 195, 247, 0.18);
+  --space-glow: rgba(79, 195, 247, 0.08);
+  --tab-bar-bg: rgba(8, 14, 26, 0.96);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--space-bg);
+  font-family: 'Roboto', sans-serif;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(79, 195, 247, 0.35);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 195, 247, 0.6);
+}
+
+/* ---- Tab bar – pinned to top ---- */
+.smui-tab-bar,
+.mdc-tab-bar {
+  position: sticky !important;
+  top: 0;
+  z-index: 200;
+  background: var(--tab-bar-bg) !important;
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--space-border);
+}
+
+/* ---- Status bar ---- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 4px 16px;
+  background: rgba(4, 8, 18, 0.95);
+  border-bottom: 1px solid var(--space-border);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.75rem;
+  color: #8fa8c4;
+  flex-wrap: wrap;
+  min-height: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 300;
+}
+
+.status-bar .sep {
+  opacity: 0.3;
+}
+
+.status-bar .credits {
+  color: var(--space-credit-color);
+  font-weight: 500;
+}
+
+.status-bar .location {
+  color: #90caf9;
+}
+
+/* ---- Tab content area ---- */
+.tab-content {
+  padding: 12px 16px;
+  min-height: calc(100vh - 32px - 48px - 200px);
+  overflow-y: auto;
+}
+
+/* ---- Bottom panel (event log + chat) ---- */
+.bottom-panel {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 8px;
+  padding: 8px 16px;
+  height: 200px;
+  background: rgba(4, 8, 18, 0.9);
+  border-top: 1px solid var(--space-border);
+}
+
+@media (max-width: 768px) {
+  .bottom-panel {
+    grid-template-columns: 1fr;
+    height: 280px;
+  }
+}
+
+/* ---- Cards ---- */
+.space-card {
+  background: var(--space-surface) !important;
+  border: 1px solid var(--space-border) !important;
+  border-radius: 6px;
+}
+
+/* ---- Grid layout helpers ---- */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .three-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .two-col,
+  .three-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Event log entry colors ---- */
+.event-combat { color: #ff7043; }
+.event-trade  { color: #66bb6a; }
+.event-nav    { color: #42a5f5; }
+.event-system { color: #ab47bc; }
+.event-error  { color: #ef5350; }
+.event-info   { color: #78909c; }
+
+/* ---- Security level chips ---- */
+.sec-high   { color: #4caf50; }
+.sec-medium { color: #ff9800; }
+.sec-low    { color: #f44336; }
+.sec-null   { color: #9c27b0; }
+
+/* ---- Progress bar colours ---- */
+.progress-hull   { --mdc-theme-primary: var(--space-hull-color) !important; }
+.progress-shield { --mdc-theme-primary: var(--space-shield-color) !important; }
+.progress-fuel   { --mdc-theme-primary: var(--space-fuel-color) !important; }
+
+/* ---- Section headings inside tabs ---- */
+.tab-section-title {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #546e7a;
+  margin: 0 0 6px 0;
+}
+
+/* ---- Mono values ---- */
+.mono {
+  font-family: 'Roboto Mono', monospace;
+}
+
+/* ---- Login screen ---- */
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #0d1f3c 0%, #060a10 70%);
+}
+
+.login-card {
+  width: 360px;
+  padding: 32px 24px;
+  background: rgba(13, 21, 37, 0.95) !important;
+  border: 1px solid var(--space-border) !important;
+}
+
+.login-title {
+  font-size: 1.6rem;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: #4fc3f7;
+  margin: 0 0 8px 0;
+}
+
+.login-subtitle {
+  font-size: 0.75rem;
+  text-align: center;
+  color: #546e7a;
+  margin: 0 0 24px 0;
+}

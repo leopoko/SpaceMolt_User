@@ -1,0 +1,12 @@
+@use 'sass:color';
+@use '@material/theme/index' as theme with (
+  $primary: #4fc3f7,
+  $secondary: #b39ddb,
+  $surface: #0d1117,
+  $background: #060a10,
+  $error: #ff6e6e,
+  $on-primary: #000000,
+  $on-secondary: #000000,
+  $on-surface: #e0ecff,
+  $on-error: #000000
+);
