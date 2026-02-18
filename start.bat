@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 setlocal
 title SpaceMolt User Client
 color 0A
@@ -54,11 +55,8 @@ echo.
 echo  Press Ctrl+C to stop the server.
 echo.
 
-:: Open browser after a short delay (give Vite time to start)
-start "" cmd /c "ping -n 3 127.0.0.1 >nul && start http://localhost:5173"
-
-:: Start Vite dev server
-call npm run dev
+:: Start Vite dev server (--open lets Vite open the browser when ready)
+call npm run dev -- --open
 
 echo.
 echo  Server stopped.
