@@ -8,9 +8,19 @@
   import { uiStore } from '$lib/stores/ui.svelte';
   import { onMount } from 'svelte';
 
+  const EMPIRES = [
+    { id: 'solarian', label: 'Solarian',    desc: 'Mining & trading bonuses' },
+    { id: 'voidborn', label: 'Voidborn',    desc: 'Stealth & shield bonuses' },
+    { id: 'crimson',  label: 'Crimson Fleet', desc: 'Combat damage bonuses' },
+    { id: 'nebula',   label: 'Nebula Collective', desc: 'Exploration speed bonuses' },
+    { id: 'outerrim', label: 'Outer Rim',   desc: 'Crafting & cargo bonuses' },
+  ];
+
   let username = $state('');
   let password = $state('');
   let serverUrl = $state('');
+  let empire = $state('solarian');
+  let registrationCode = $state('');
   let mode = $state<'login' | 'register'>('login');
   let loading = $state(false);
   let errorMsg = $state('');
@@ -55,8 +65,12 @@
   function handleSubmit() {
     console.debug('[Login] submit: mode=%s user=%s connStatus=%s', mode, username, connectionStore.status);
     errorMsg = '';
-    if (!username.trim() || !password.trim()) {
-      errorMsg = 'Username and password are required.';
+    if (!username.trim()) {
+      errorMsg = 'Username is required.';
+      return;
+    }
+    if (mode === 'login' && !password.trim()) {
+      errorMsg = 'Password is required.';
       return;
     }
 
@@ -73,7 +87,12 @@
     if (mode === 'login') {
       ws.login(username, password);
     } else {
-      ws.register(username, password);
+      if (!registrationCode.trim()) {
+        errorMsg = 'Registration code is required. Get one at https://spacemolt.com/dashboard';
+        loading = false;
+        return;
+      }
+      ws.register(username, empire, registrationCode);
     }
 
     // Timeout fallback
@@ -128,26 +147,61 @@
       />
     </div>
 
-    <!-- Password -->
-    <div class="field-row password-row">
-      <Textfield
-        bind:value={password}
-        label="Password"
-        type={showPassword ? 'text' : 'password'}
-        variant="outlined"
-        style="width:100%"
-        input$autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
-        onkeydown={handleKeydown}
-      />
-      <button
-        class="show-pw-btn"
-        type="button"
-        onclick={() => showPassword = !showPassword}
-        aria-label={showPassword ? 'Hide password' : 'Show password'}
-      >
-        <span class="material-icons">{showPassword ? 'visibility_off' : 'visibility'}</span>
-      </button>
-    </div>
+    <!-- Password (login only; server generates password on register) -->
+    {#if mode === 'login'}
+      <div class="field-row password-row">
+        <Textfield
+          bind:value={password}
+          label="Password"
+          type={showPassword ? 'text' : 'password'}
+          variant="outlined"
+          style="width:100%"
+          input$autocomplete="current-password"
+          onkeydown={handleKeydown}
+        />
+        <button
+          class="show-pw-btn"
+          type="button"
+          onclick={() => showPassword = !showPassword}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+        >
+          <span class="material-icons">{showPassword ? 'visibility_off' : 'visibility'}</span>
+        </button>
+      </div>
+    {/if}
+
+    {#if mode === 'register'}
+      <!-- Empire selector -->
+      <div class="field-row">
+        <p class="field-label">Empire</p>
+        <div class="empire-grid">
+          {#each EMPIRES as emp}
+            <button
+              class="empire-btn"
+              class:selected={empire === emp.id}
+              type="button"
+              onclick={() => empire = emp.id}
+            >
+              <span class="empire-name">{emp.label}</span>
+              <span class="empire-desc">{emp.desc}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Registration code -->
+      <div class="field-row">
+        <Textfield
+          bind:value={registrationCode}
+          label="Registration Code"
+          variant="outlined"
+          style="width:100%"
+          input$autocomplete="off"
+          onkeydown={handleKeydown}
+        />
+        <p class="field-hint">Get your code at <a href="https://spacemolt.com/dashboard" target="_blank" rel="noopener">spacemolt.com/dashboard</a></p>
+      </div>
+    {/if}
 
     {#if errorMsg}
       <p class="error-msg">{errorMsg}</p>
@@ -291,5 +345,73 @@
 
   .show-pw-btn:hover {
     color: #4fc3f7;
+  }
+
+  .field-label {
+    font-size: 0.7rem;
+    color: #546e7a;
+    margin: 0 0 8px 0;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .field-hint {
+    font-size: 0.68rem;
+    color: #546e7a;
+    margin: 4px 0 0 0;
+  }
+
+  .field-hint a {
+    color: #4fc3f7;
+    text-decoration: none;
+  }
+
+  .field-hint a:hover {
+    text-decoration: underline;
+  }
+
+  .empire-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .empire-btn {
+    background: rgba(79, 195, 247, 0.05);
+    border: 1px solid rgba(79, 195, 247, 0.2);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .empire-btn:hover {
+    border-color: rgba(79, 195, 247, 0.5);
+    background: rgba(79, 195, 247, 0.1);
+  }
+
+  .empire-btn.selected {
+    border-color: #4fc3f7;
+    background: rgba(79, 195, 247, 0.15);
+  }
+
+  .empire-name {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #c0cfe0;
+  }
+
+  .empire-btn.selected .empire-name {
+    color: #4fc3f7;
+  }
+
+  .empire-desc {
+    font-size: 0.65rem;
+    color: #546e7a;
+    line-height: 1.3;
   }
 </style>

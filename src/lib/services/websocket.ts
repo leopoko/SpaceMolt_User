@@ -153,7 +153,11 @@ class WebSocketService {
         authStore.isLoggedIn = true;
         authStore.username = authStore.savedUsername;
         const pw = pl.password;
-        if (pw) authStore.persistCredentials(authStore.savedUsername, pw);
+        if (pw) {
+          authStore.persistCredentials(authStore.savedUsername, pw);
+          authStore.registeredPassword = pw; // shown to user so they can save it
+          eventsStore.add({ type: 'system', message: `YOUR PASSWORD: ${pw} — Save this! It is auto-filled but write it down.` });
+        }
         eventsStore.add({ type: 'system', message: `Registered as ${authStore.username}` });
         this.getStatus();
         this.getSystem();
@@ -404,8 +408,9 @@ class WebSocketService {
     this.send({ type: 'login', payload: { username, password } });
   }
 
-  register(username: string, empire: string) {
-    this.send({ type: 'register', payload: { username, empire } });
+  register(username: string, empire: string, registrationCode: string) {
+    authStore.savedUsername = username;
+    this.send({ type: 'register', payload: { username, empire, registration_code: registrationCode } });
   }
 
   // ---- Navigation ----

@@ -6,6 +6,7 @@ function getStoredItem(key: string): string {
 class AuthStore {
   isLoggedIn = $state(false);
   loginError = $state<string | null>(null);
+  registeredPassword = $state<string | null>(null); // set after registration so user can copy it
   username = $state('');
   savedUsername = $state(getStoredItem('spacemolt_username'));
   savedPassword = $state(getStoredItem('spacemolt_password'));
