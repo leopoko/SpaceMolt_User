@@ -16,6 +16,12 @@ import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 
+// All server messages use { type, payload: {...} }.
+// p() extracts payload, falling back to the message itself for robustness.
+function p<T>(msg: WsMessage): T {
+  return (msg.payload ?? msg) as T;
+}
+
 class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,7 +80,7 @@ class WebSocketService {
 
     // Re-authenticate if was logged in
     if (authStore.isLoggedIn && authStore.savedUsername && authStore.savedPassword) {
-      this.rawSend({ type: 'login', username: authStore.savedUsername, password: authStore.savedPassword });
+      this.rawSend({ type: 'login', payload: { username: authStore.savedUsername, password: authStore.savedPassword } });
     }
 
     // Flush queued messages
@@ -120,32 +126,34 @@ class WebSocketService {
   }
 
   private dispatch(msg: WsMessage) {
-    // eslint-disable-next-line no-console
     console.debug('[WS →]', msg.type, msg);
 
     switch (msg.type) {
       case 'welcome': {
-        const w = msg as unknown as WelcomePayload & { type: string };
-        connectionStore.tickRate = w.tick_rate ?? 10;
-        eventsStore.add({ type: 'system', message: `Connected to SpaceMolt v${w.version} – ${w.motd}` });
+        const pl = p<WelcomePayload>(msg);
+        connectionStore.tickRate = pl.tick_rate ?? 10;
+        if (pl.current_tick !== undefined) connectionStore.tick = pl.current_tick;
+        eventsStore.add({ type: 'system', message: `Connected to SpaceMolt v${pl.version ?? '?'} – ${pl.motd ?? ''}` });
         break;
       }
 
       case 'logged_in': {
+        const pl = p<{ player?: Record<string, unknown>; ship?: Record<string, unknown>; system?: Record<string, unknown> }>(msg);
         authStore.isLoggedIn = true;
-        authStore.username = (msg.username as string) ?? authStore.savedUsername;
+        authStore.username = (pl.player?.username as string) ?? authStore.savedUsername;
+        if (pl.player) playerStore.update(pl.player as never);
+        if (pl.ship) shipStore.updateCurrent(pl.ship as never);
+        if (pl.system) systemStore.update(pl.system as never);
         eventsStore.add({ type: 'system', message: `Logged in as ${authStore.username}` });
-        // Fetch initial state
-        this.getStatus();
-        this.getSystem();
         break;
       }
 
       case 'registered': {
+        const pl = p<{ password?: string; player_id?: string }>(msg);
         authStore.isLoggedIn = true;
-        authStore.username = (msg.username as string) ?? '';
-        const pw = msg.password as string | undefined;
-        if (pw) authStore.persistCredentials(authStore.username, pw);
+        authStore.username = authStore.savedUsername;
+        const pw = pl.password;
+        if (pw) authStore.persistCredentials(authStore.savedUsername, pw);
         eventsStore.add({ type: 'system', message: `Registered as ${authStore.username}` });
         this.getStatus();
         this.getSystem();
@@ -153,8 +161,8 @@ class WebSocketService {
       }
 
       case 'login_failed': {
-        const payload = msg.payload as { message?: string } | undefined;
-        const errMsg = payload?.message ?? (msg.message as string | undefined) ?? 'Invalid credentials';
+        const pl = p<{ message?: string }>(msg);
+        const errMsg = pl.message ?? 'Invalid credentials';
         console.debug('[WS login_failed]', errMsg);
         authStore.loginError = errMsg;
         eventsStore.add({ type: 'error', message: errMsg });
@@ -162,9 +170,9 @@ class WebSocketService {
       }
 
       case 'error': {
-        const payload = msg.payload as { code?: string; message?: string } | undefined;
-        const errMsg = payload?.message ?? (msg.message as string | undefined) ?? 'Unknown error';
-        console.debug('[WS error] code:', payload?.code, '| message:', errMsg);
+        const pl = p<{ code?: string; message?: string }>(msg);
+        const errMsg = pl.message ?? 'Unknown error';
+        console.debug('[WS error] code:', pl.code, '| message:', errMsg);
         eventsStore.add({ type: 'error', message: errMsg });
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
@@ -173,54 +181,56 @@ class WebSocketService {
       }
 
       case 'state_update': {
-        const u = msg as unknown as StateUpdate;
-        if (u.player) playerStore.update(u.player);
-        if (u.ship) shipStore.updateCurrent(u.ship);
-        if (u.system) systemStore.update(u.system);
-        if (u.events) u.events.forEach(e => eventsStore.add(e));
-        if (u.chat) u.chat.forEach(c => chatStore.addMessage(c));
-        if (u.tick !== undefined) connectionStore.tick = u.tick;
+        const pl = p<StateUpdate>(msg);
+        if (pl.player) playerStore.update(pl.player);
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
+        if (pl.system) systemStore.update(pl.system);
+        if (pl.events) pl.events.forEach(e => eventsStore.add(e));
+        if (pl.chat) pl.chat.forEach(c => chatStore.addMessage(c));
+        if (pl.tick !== undefined) connectionStore.tick = pl.tick;
         break;
       }
 
       case 'tick': {
-        connectionStore.tick = (msg.tick as number) ?? connectionStore.tick + 1;
+        const pl = p<{ tick?: number }>(msg);
+        connectionStore.tick = pl.tick ?? connectionStore.tick + 1;
         systemStore.setTravel({ current_tick: connectionStore.tick });
         break;
       }
 
       case 'player_status': {
-        if (msg.player) playerStore.update(msg.player as never);
-        if (msg.ship) shipStore.updateCurrent(msg.ship as never);
+        const pl = p<{ player?: never; ship?: never }>(msg);
+        if (pl.player) playerStore.update(pl.player);
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
         break;
       }
 
       case 'system_info': {
-        systemStore.update(msg as never);
+        const pl = p<never>(msg);
+        systemStore.update(pl);
         break;
       }
 
       case 'arrived':
       case 'jumped': {
+        const pl = p<{ system_name?: string; destination?: string }>(msg);
         systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
-        const dest = (msg.system_name as string) ?? (msg.destination as string) ?? '';
+        const dest = pl.system_name ?? pl.destination ?? '';
         eventsStore.add({ type: 'nav', message: `Arrived at ${dest}` });
         this.getSystem();
         break;
       }
 
       case 'travel_update': {
-        systemStore.setTravel({
-          in_progress: true,
-          arrival_tick: msg.arrival_tick as number ?? null
-        });
+        const pl = p<{ arrival_tick?: number }>(msg);
+        systemStore.setTravel({ in_progress: true, arrival_tick: pl.arrival_tick ?? null });
         break;
       }
 
       case 'docked': {
-        const stationName = (msg.station_name as string) ?? '';
-        eventsStore.add({ type: 'nav', message: `Docked at ${stationName}` });
-        playerStore.update({ status: 'docked', poi_id: msg.station_id as string ?? null });
+        const pl = p<{ station_name?: string; station_id?: string }>(msg);
+        eventsStore.add({ type: 'nav', message: `Docked at ${pl.station_name ?? ''}` });
+        playerStore.update({ status: 'docked', poi_id: pl.station_id ?? null });
         break;
       }
 
@@ -231,12 +241,12 @@ class WebSocketService {
       }
 
       case 'combat_update': {
-        const event = msg as unknown as CombatEvent;
-        combatStore.addEvent(event);
+        const pl = p<CombatEvent>(msg);
+        combatStore.addEvent(pl);
         combatStore.setInCombat(true);
         eventsStore.add({
           type: 'combat',
-          message: `${event.attacker} → ${event.defender}: ${event.damage} dmg (${event.result})`
+          message: `${pl.attacker} → ${pl.defender}: ${pl.damage} dmg (${pl.result})`
         });
         break;
       }
@@ -249,104 +259,116 @@ class WebSocketService {
       }
 
       case 'scan_result': {
-        const scan = msg as unknown as ScanResult;
-        combatStore.setScanResult(scan);
-        eventsStore.add({ type: 'nav', message: `Scan complete: ${scan.targets?.length ?? 0} targets detected` });
+        const pl = p<ScanResult>(msg);
+        combatStore.setScanResult(pl);
+        eventsStore.add({ type: 'nav', message: `Scan complete: ${pl.targets?.length ?? 0} targets detected` });
         break;
       }
 
       case 'mining_yield': {
-        const item = msg.item as string ?? 'ore';
-        const qty = msg.quantity as number ?? 0;
-        eventsStore.add({ type: 'info', message: `Mined ${qty}x ${item}` });
-        if (msg.ship) shipStore.updateCurrent(msg.ship as never);
+        const pl = p<{ item?: string; quantity?: number; ship?: never }>(msg);
+        eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${pl.item ?? 'ore'}` });
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
         break;
       }
 
       case 'skill_level_up': {
-        eventsStore.add({ type: 'info', message: `Skill up: ${msg.skill_name}` });
-        if (msg.player) playerStore.update(msg.player as never);
+        const pl = p<{ skill_name?: string; player?: never }>(msg);
+        eventsStore.add({ type: 'info', message: `Skill up: ${pl.skill_name ?? ''}` });
+        if (pl.player) playerStore.update(pl.player);
         break;
       }
 
       case 'market_data': {
-        marketStore.setData(msg as unknown as MarketData);
+        const pl = p<MarketData>(msg);
+        marketStore.setData(pl);
         break;
       }
 
       case 'orders_data': {
-        marketStore.setMyOrders((msg.orders as never[]) ?? []);
+        const pl = p<{ orders?: never[] }>(msg);
+        marketStore.setMyOrders(pl.orders ?? []);
         break;
       }
 
       case 'order_cancelled': {
-        const oid = msg.order_id as string ?? '';
-        marketStore.removeOrder(oid);
+        const pl = p<{ order_id?: string }>(msg);
+        marketStore.removeOrder(pl.order_id ?? '');
         eventsStore.add({ type: 'trade', message: 'Order cancelled' });
         break;
       }
 
       case 'buy_result':
       case 'sell_result': {
-        eventsStore.add({ type: 'trade', message: (msg.message as string) ?? 'Trade complete' });
-        if (msg.player) playerStore.update(msg.player as never);
-        if (msg.ship) shipStore.updateCurrent(msg.ship as never);
+        const pl = p<{ message?: string; player?: never; ship?: never }>(msg);
+        eventsStore.add({ type: 'trade', message: pl.message ?? 'Trade complete' });
+        if (pl.player) playerStore.update(pl.player);
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
         break;
       }
 
       case 'ship_list': {
-        shipStore.updateFleet(msg as unknown as FleetData);
+        const pl = p<FleetData>(msg);
+        shipStore.updateFleet(pl);
         break;
       }
 
       case 'ship_info': {
-        shipStore.updateCurrent(msg.ship as never);
+        const pl = p<{ ship?: never }>(msg);
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
         break;
       }
 
       case 'ship_catalog': {
-        shipStore.catalog = (msg.ships as never[]) ?? [];
+        const pl = p<{ ships?: never[] }>(msg);
+        shipStore.catalog = pl.ships ?? [];
         break;
       }
 
       case 'storage_data': {
-        baseStore.setStorage(msg as unknown as StorageData);
+        const pl = p<StorageData>(msg);
+        baseStore.setStorage(pl);
         break;
       }
 
       case 'craft_result': {
+        const pl = p<{ message?: string; success?: boolean; ship?: never }>(msg);
         craftingStore.setInProgress(false);
-        const resultMsg = (msg.message as string) ?? (msg.success ? 'Craft complete' : 'Craft failed');
+        const resultMsg = pl.message ?? (pl.success ? 'Craft complete' : 'Craft failed');
         craftingStore.setLastResult(resultMsg);
         eventsStore.add({ type: 'info', message: resultMsg });
-        if (msg.ship) shipStore.updateCurrent(msg.ship as never);
+        if (pl.ship) shipStore.updateCurrent(pl.ship);
         break;
       }
 
       case 'recipes': {
-        craftingStore.setRecipes((msg.recipes as Recipe[]) ?? []);
+        const pl = p<{ recipes?: Recipe[] }>(msg);
+        craftingStore.setRecipes(pl.recipes ?? []);
         break;
       }
 
       case 'faction_info': {
-        factionStore.update(msg as unknown as Faction);
+        const pl = p<Faction>(msg);
+        factionStore.update(pl);
         break;
       }
 
       case 'chat_message': {
-        chatStore.addMessage(msg as unknown as ChatMessage);
+        const pl = p<ChatMessage>(msg);
+        chatStore.addMessage(pl);
         break;
       }
 
       case 'police_warning': {
-        eventsStore.add({ type: 'combat', message: `Police warning: ${msg.message ?? ''}` });
+        const pl = p<{ message?: string }>(msg);
+        eventsStore.add({ type: 'combat', message: `Police warning: ${pl.message ?? ''}` });
         break;
       }
 
       case 'ok': {
-        // Generic success – log if there's a message
-        if (msg.message) {
-          eventsStore.add({ type: 'info', message: msg.message as string });
+        const pl = p<{ message?: string }>(msg);
+        if (pl.message) {
+          eventsStore.add({ type: 'info', message: pl.message });
         }
         break;
       }
@@ -379,11 +401,11 @@ class WebSocketService {
   login(username: string, password: string) {
     authStore.savedUsername = username;
     authStore.savedPassword = password;
-    this.send({ type: 'login', username, password });
+    this.send({ type: 'login', payload: { username, password } });
   }
 
-  register(username: string, password: string) {
-    this.send({ type: 'register', username, password });
+  register(username: string, empire: string) {
+    this.send({ type: 'register', payload: { username, empire } });
   }
 
   // ---- Navigation ----
@@ -393,97 +415,97 @@ class WebSocketService {
 
   travel(destinationId: string) {
     systemStore.setTravel({ in_progress: true, destination_id: destinationId, type: 'travel' });
-    this.send({ type: 'travel', destination: destinationId });
+    this.send({ type: 'travel', payload: { destination: destinationId } });
   }
 
   jump(systemId: string, systemName?: string) {
     systemStore.setTravel({ in_progress: true, destination_id: systemId, destination_name: systemName ?? systemId, type: 'jump' });
-    this.send({ type: 'jump', system: systemId });
+    this.send({ type: 'jump', payload: { system: systemId } });
   }
 
-  dock(stationId: string) { this.send({ type: 'dock', station: stationId }); }
+  dock(stationId: string) { this.send({ type: 'dock', payload: { station: stationId } }); }
   undock() { this.send({ type: 'undock' }); }
 
   // ---- Combat ----
 
   attack(targetId: string) {
     combatStore.lastAttackTarget = targetId;
-    this.send({ type: 'attack', target: targetId });
+    this.send({ type: 'attack', payload: { target: targetId } });
   }
 
   scan() { this.send({ type: 'scan' }); }
 
   // ---- Mining ----
 
-  mine(asteroidId: string) { this.send({ type: 'mine', target: asteroidId }); }
+  mine(asteroidId: string) { this.send({ type: 'mine', payload: { target: asteroidId } }); }
 
   // ---- Trading ----
 
-  viewMarket(stationId: string) { this.send({ type: 'view_market', station: stationId }); }
+  viewMarket(stationId: string) { this.send({ type: 'view_market', payload: { station: stationId } }); }
   viewOrders() { this.send({ type: 'view_orders' }); }
 
   buy(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'buy', item: itemId, quantity, price });
+    this.send({ type: 'buy', payload: { item: itemId, quantity, price } });
   }
 
   sell(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'sell', item: itemId, quantity, price });
+    this.send({ type: 'sell', payload: { item: itemId, quantity, price } });
   }
 
   createBuyOrder(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'create_buy_order', item: itemId, quantity, price });
+    this.send({ type: 'create_buy_order', payload: { item: itemId, quantity, price } });
   }
 
   createSellOrder(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'create_sell_order', item: itemId, quantity, price });
+    this.send({ type: 'create_sell_order', payload: { item: itemId, quantity, price } });
   }
 
-  cancelOrder(orderId: string) { this.send({ type: 'cancel_order', order: orderId }); }
+  cancelOrder(orderId: string) { this.send({ type: 'cancel_order', payload: { order: orderId } }); }
   modifyOrder(orderId: string, price?: number, quantity?: number) {
-    this.send({ type: 'modify_order', order: orderId, price, quantity });
+    this.send({ type: 'modify_order', payload: { order: orderId, price, quantity } });
   }
 
   // ---- Ships ----
 
   listShips() { this.send({ type: 'list_ships' }); }
   getShipCatalog() { this.send({ type: 'get_ships' }); }
-  buyShip(shipType: string) { this.send({ type: 'buy_ship', ship_type: shipType }); }
-  sellShip(shipId: string) { this.send({ type: 'sell_ship', ship: shipId }); }
-  switchShip(shipId: string) { this.send({ type: 'switch_ship', ship: shipId }); }
+  buyShip(shipType: string) { this.send({ type: 'buy_ship', payload: { ship_type: shipType } }); }
+  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship: shipId } }); }
+  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship: shipId } }); }
 
   // ---- Crafting ----
 
   getRecipes() { this.send({ type: 'get_recipes' }); }
   craft(recipeId: string, quantity: number) {
     craftingStore.setInProgress(true);
-    this.send({ type: 'craft', recipe: recipeId, quantity });
+    this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
   }
 
   // ---- Storage ----
 
-  viewStorage(stationId: string) { this.send({ type: 'view_storage', station: stationId }); }
+  viewStorage(stationId: string) { this.send({ type: 'view_storage', payload: { station: stationId } }); }
 
   depositItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'deposit_items', items });
+    this.send({ type: 'deposit_items', payload: { items } });
   }
 
   withdrawItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'withdraw_items', items });
+    this.send({ type: 'withdraw_items', payload: { items } });
   }
 
-  depositCredits(amount: number) { this.send({ type: 'deposit_credits', amount }); }
-  withdrawCredits(amount: number) { this.send({ type: 'withdraw_credits', amount }); }
+  depositCredits(amount: number) { this.send({ type: 'deposit_credits', payload: { amount } }); }
+  withdrawCredits(amount: number) { this.send({ type: 'withdraw_credits', payload: { amount } }); }
 
   // ---- Faction ----
 
-  getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', faction: factionId }); }
-  declareWar(factionId: string) { this.send({ type: 'declare_war', faction: factionId }); }
-  proposePeace(factionId: string) { this.send({ type: 'propose_peace', faction: factionId }); }
+  getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', payload: { faction: factionId } }); }
+  declareWar(factionId: string) { this.send({ type: 'declare_war', payload: { faction: factionId } }); }
+  proposePeace(factionId: string) { this.send({ type: 'propose_peace', payload: { faction: factionId } }); }
 
   // ---- Chat ----
 
   sendChat(message: string, channel = 'global') {
-    this.send({ type: 'chat', message, channel });
+    this.send({ type: 'chat', payload: { message, channel } });
   }
 }
 
