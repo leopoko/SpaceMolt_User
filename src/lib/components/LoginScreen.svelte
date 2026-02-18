@@ -31,9 +31,10 @@
     }
   });
 
-  // Watch for login_failed response from server
+  // Watch for login_failed / error response from server
   $effect(() => {
     if (authStore.loginError) {
+      console.debug('[Login] loginError received:', authStore.loginError);
       loading = false;
       errorMsg = authStore.loginError;
       authStore.loginError = null;
@@ -52,6 +53,7 @@
   });
 
   function handleSubmit() {
+    console.debug('[Login] submit: mode=%s user=%s connStatus=%s', mode, username, connectionStore.status);
     errorMsg = '';
     if (!username.trim() || !password.trim()) {
       errorMsg = 'Username and password are required.';

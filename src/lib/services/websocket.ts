@@ -153,14 +153,18 @@ class WebSocketService {
       }
 
       case 'login_failed': {
-        const errMsg = (msg.message as string) ?? 'Invalid credentials';
+        const payload = msg.payload as { message?: string } | undefined;
+        const errMsg = payload?.message ?? (msg.message as string | undefined) ?? 'Invalid credentials';
+        console.debug('[WS login_failed]', errMsg);
         authStore.loginError = errMsg;
         eventsStore.add({ type: 'error', message: errMsg });
         break;
       }
 
       case 'error': {
-        const errMsg = (msg.message as string) ?? 'Unknown error';
+        const payload = msg.payload as { code?: string; message?: string } | undefined;
+        const errMsg = payload?.message ?? (msg.message as string | undefined) ?? 'Unknown error';
+        console.debug('[WS error] code:', payload?.code, '| message:', errMsg);
         eventsStore.add({ type: 'error', message: errMsg });
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
@@ -361,9 +365,11 @@ class WebSocketService {
   }
 
   send(msg: WsMessage) {
+    console.debug('[WS ←]', msg.type, msg);
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {
+      console.debug('[WS ←] queued (readyState=%s)', this.ws?.readyState);
       this.messageQueue.push(msg);
     }
   }
