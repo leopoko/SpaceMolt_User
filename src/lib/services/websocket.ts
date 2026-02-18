@@ -15,6 +15,7 @@ import { factionStore } from '$lib/stores/faction.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
+import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -197,8 +198,14 @@ class WebSocketService {
         if (legacy.events) legacy.events.forEach(e => eventsStore.add(e));
         if (legacy.chat) legacy.chat.forEach(c => chatStore.addMessage(c));
         if (pl.tick !== undefined) {
+          const prevTick = connectionStore.tick;
           connectionStore.tick = pl.tick;
           connectionStore.lastTickTime = Date.now();
+          // Execute next queued action only when tick number advances
+          // (dedup via tick number in case both tick + state_update fire)
+          if (pl.tick > prevTick) {
+            actionQueueStore.executeNext(pl.tick);
+          }
         }
         break;
       }
@@ -208,6 +215,7 @@ class WebSocketService {
         connectionStore.tick = pl.tick ?? connectionStore.tick + 1;
         connectionStore.lastTickTime = Date.now();
         systemStore.setTravel({ current_tick: connectionStore.tick });
+        actionQueueStore.executeNext(connectionStore.tick);
         break;
       }
 

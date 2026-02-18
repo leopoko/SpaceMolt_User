@@ -33,9 +33,13 @@ class PlayerStore {
   get poi_id(): string | null { return this.data?.current_poi ?? this.data?.poi_id ?? null; }
 
   // Dock state – docked_at_base (state_update) or status === 'docked' (legacy)
+  // Note: server omits docked_at_base entirely when undocked, so absence = not docked.
   get isDocked(): boolean {
-    if (this.data?.docked_at_base != null && this.data.docked_at_base !== '') return true;
-    return this.data?.status === 'docked';
+    const db = this.data?.docked_at_base;
+    if (db != null && db !== '') return true;
+    // Only fall back to status if docked_at_base was never set (legacy path)
+    if (db === undefined) return this.data?.status === 'docked';
+    return false;
   }
   get dockedAt(): string | null { return this.data?.docked_at_base ?? null; }
   get homeBase(): string | null { return this.data?.home_base ?? null; }
@@ -60,8 +64,13 @@ class PlayerStore {
   update(partial: Partial<Player>) {
     if (this.data) {
       Object.assign(this.data, partial);
+      // Full player objects from state_update omit docked_at_base when undocked.
+      // Detect a "full" update by presence of 'id', and explicitly clear if absent.
+      if ('id' in partial && !('docked_at_base' in partial)) {
+        this.data.docked_at_base = null;
+      }
     } else {
-      this.data = partial as Player;
+      this.data = { docked_at_base: null, ...partial } as Player;
     }
     // Persist dock-relevant fields for page-reload survival
     try {

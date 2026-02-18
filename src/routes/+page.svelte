@@ -7,6 +7,7 @@
   import StatusBar from '$lib/components/StatusBar.svelte';
   import EventLog from '$lib/components/EventLog.svelte';
   import ChatPanel from '$lib/components/ChatPanel.svelte';
+  import ActionQueue from '$lib/components/ActionQueue.svelte';
   import NavigationTab from '$lib/components/tabs/NavigationTab.svelte';
   import CombatTab from '$lib/components/tabs/CombatTab.svelte';
   import MiningTab from '$lib/components/tabs/MiningTab.svelte';
@@ -61,6 +62,7 @@
     <div class="bottom-panel">
       <EventLog />
       <ChatPanel />
+      <ActionQueue />
     </div>
   </div>
 {/if}

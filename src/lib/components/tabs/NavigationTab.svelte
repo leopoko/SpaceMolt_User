@@ -4,6 +4,7 @@
   import { systemStore } from '$lib/stores/system.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
+  import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 
   const secColor: Record<string, string> = {
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
@@ -28,19 +29,19 @@
   }
 
   function doJump(systemId: string, systemName: string) {
-    ws.jump(systemId, systemName);
+    actionQueueStore.enqueue(`Jump → ${systemName}`, () => ws.jump(systemId, systemName));
   }
 
-  function doTravel(poiId: string) {
-    ws.travel(poiId);
+  function doTravel(poiId: string, poiName: string) {
+    actionQueueStore.enqueue(`Travel → ${poiName}`, () => ws.travel(poiId));
   }
 
-  function doDock(stationId: string) {
-    ws.dock(stationId);
+  function doDock(stationId: string, stationName: string) {
+    actionQueueStore.enqueue(`Dock @ ${stationName}`, () => ws.dock(stationId));
   }
 
   function doUndock() {
-    ws.undock();
+    actionQueueStore.enqueue('Undock', () => ws.undock());
   }
 
   function refresh() {
@@ -98,7 +99,7 @@
                       variant="outlined"
                       dense
                       disabled={systemStore.travel.in_progress || playerStore.isDocked}
-                      onclick={() => doTravel(poi.id)}
+                      onclick={() => doTravel(poi.id, poi.name)}
                     >
                       <Label>Travel</Label>
                     </Button>
@@ -108,7 +109,7 @@
                         variant="outlined"
                         dense
                         disabled={playerStore.isDocked || systemStore.travel.in_progress}
-                        onclick={() => doDock(poi.id)}
+                        onclick={() => doDock(poi.id, poi.name)}
                       >
                         <Label>Dock</Label>
                       </Button>
