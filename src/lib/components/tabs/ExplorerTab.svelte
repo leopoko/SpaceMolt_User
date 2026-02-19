@@ -289,8 +289,8 @@
   // ---- Scale for POI rendering within the map ----
   // Fixed in world-space so POI sizes don't change with zoom.
   let poiVisualScale = $derived(poiScale * 1.0);
-  // Separate zoom-dependent scale for system labels (so they stay readable at all zoom levels)
-  let labelScale = $derived(viewW * 0.015);
+  // Label scale tied to world-space so labels grow/shrink with zoom
+  let labelScale = $derived(poiVisualScale * 2);
 
   // ---- Fetch map data ----
   async function fetchMapData() {
@@ -616,8 +616,8 @@
           x1={conn.x1} y1={conn.y1}
           x2={conn.x2} y2={conn.y2}
           stroke={conn.bothKnown ? 'rgba(79,195,247,0.25)' : 'rgba(79,195,247,0.10)'}
-          stroke-width={viewW * 0.0015}
-          stroke-dasharray="{viewW * 0.006} {viewW * 0.004}"
+          stroke-width={poiVisualScale * 0.2}
+          stroke-dasharray="{poiVisualScale * 0.9} {poiVisualScale * 0.6}"
         />
       {/each}
 
