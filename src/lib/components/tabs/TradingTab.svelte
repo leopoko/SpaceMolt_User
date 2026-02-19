@@ -247,40 +247,52 @@
                   <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
                 </tr>
 
-                <!-- Expanded detail: Buy Orders under Best Buy, Sell Orders under Best Sell -->
+                <!-- Expanded detail -->
                 {#if expandedItems.has(item.item_id)}
                   <tr class="detail-row">
-                    <td></td>
-                    <td></td>
-                    <td class="detail-cell" colspan="1">
-                      <p class="detail-title buy-label">Wanted (Sell to)</p>
-                      {#if item.buy_orders.length > 0}
-                        {#each item.buy_orders as order}
-                          <div class="detail-order-row">
-                            <span class="mono buy-price">₡{order.price_each.toLocaleString()}</span>
-                            <span class="mono detail-qty">×{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</span>
-                            <button class="action-btn sell-btn" onclick={(e) => { e.stopPropagation(); quickSell(item, order); }}>Sell</button>
-                          </div>
-                        {/each}
-                      {:else}
-                        <p class="detail-empty">—</p>
-                      {/if}
+                    <td colspan="5">
+                      <div class="detail-grid">
+                        <div class="detail-section">
+                          <p class="detail-title sell-label">For Sale (Buy from)</p>
+                          {#if item.sell_orders.length > 0}
+                            <table class="detail-table">
+                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
+                              <tbody>
+                                {#each item.sell_orders as order}
+                                  <tr>
+                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <p class="detail-empty">No sell orders</p>
+                          {/if}
+                        </div>
+
+                        <div class="detail-section">
+                          <p class="detail-title buy-label">Wanted (Sell to)</p>
+                          {#if item.buy_orders.length > 0}
+                            <table class="detail-table">
+                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
+                              <tbody>
+                                {#each item.buy_orders as order}
+                                  <tr>
+                                    <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                    <td><button class="action-btn sell-btn" onclick={(e) => { e.stopPropagation(); quickSell(item, order); }}>Sell</button></td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <p class="detail-empty">No buy orders</p>
+                          {/if}
+                        </div>
+                      </div>
                     </td>
-                    <td class="detail-cell" colspan="1">
-                      <p class="detail-title sell-label">For Sale (Buy from)</p>
-                      {#if item.sell_orders.length > 0}
-                        {#each item.sell_orders as order}
-                          <div class="detail-order-row">
-                            <span class="mono sell-price">₡{order.price_each.toLocaleString()}</span>
-                            <span class="mono detail-qty">×{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</span>
-                            <button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button>
-                          </div>
-                        {/each}
-                      {:else}
-                        <p class="detail-empty">—</p>
-                      {/if}
-                    </td>
-                    <td></td>
                   </tr>
                 {/if}
               {/each}
@@ -626,19 +638,29 @@
   .expand-icon { color: #37474f; padding: 0 2px; }
   .item-name { font-weight: 500; color: #b0bec5; }
 
-  /* Detail rows – aligned under Best Buy / Best Sell columns */
+  /* Detail rows */
   .detail-row td {
     padding: 0;
     border-bottom: 1px solid rgba(79, 195, 247, 0.08);
-    vertical-align: top;
   }
 
-  .detail-cell {
-    padding: 6px 6px 8px !important;
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 8px 12px 12px 30px;
+  }
+
+  @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .detail-section {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    padding: 6px 8px;
   }
 
   .detail-title {
-    font-size: 0.58rem;
+    font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -647,23 +669,29 @@
   .sell-label { color: #ff9800; }
   .buy-label { color: #4caf50; }
 
-  .detail-order-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 0;
-    font-size: 0.68rem;
+  .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.7rem;
   }
-
-  .detail-qty {
-    color: #78909c;
-    font-size: 0.65rem;
+  .detail-table th {
+    text-align: right;
+    font-size: 0.58rem;
+    color: #37474f;
+    padding: 2px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .detail-table td {
+    padding: 2px 4px;
+    color: #90a4ae;
   }
 
   .detail-empty {
     font-size: 0.65rem;
     color: #263238;
-    padding: 2px 0;
+    text-align: center;
+    padding: 6px 0;
   }
 
   .source-tag {
