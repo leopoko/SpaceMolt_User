@@ -1,27 +1,34 @@
-import type { ChatMessage, ChatChannel } from '$lib/types/game';
+import type { ChatMessage, ChatViewFilter } from '$lib/types/game';
 
 const MAX_MESSAGES = 200;
 
 class ChatStore {
   messages = $state<ChatMessage[]>([]);
-  activeChannel = $state<ChatChannel>('global');
+  activeFilter = $state<ChatViewFilter>('all');
+  /** Target username for private messages */
+  privateTarget = $state('');
 
   get filteredMessages(): ChatMessage[] {
-    return this.messages.filter(
-      m => m.channel === this.activeChannel || this.activeChannel === 'global'
-    );
+    if (this.activeFilter === 'all') return this.messages;
+    return this.messages.filter(m => m.channel === this.activeFilter);
+  }
+
+  /** Whether the active filter is a receive-only view (no input) */
+  get isReceiveOnly(): boolean {
+    return this.activeFilter === 'all' || this.activeFilter === 'system';
   }
 
   addMessage(msg: ChatMessage) {
     this.messages = [...this.messages, msg].slice(-MAX_MESSAGES);
   }
 
-  setChannel(channel: ChatChannel) {
-    this.activeChannel = channel;
+  setFilter(filter: ChatViewFilter) {
+    this.activeFilter = filter;
   }
 
   reset() {
     this.messages = [];
+    this.privateTarget = '';
   }
 }
 

@@ -6,6 +6,7 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { chatStore } from '$lib/stores/chat.svelte';
 
   const secColor: Record<string, string> = {
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
@@ -44,6 +45,11 @@
 
   function doUndock() {
     actionQueueStore.enqueue('Undock', () => ws.undock());
+  }
+
+  function openPM(username: string) {
+    chatStore.privateTarget = username;
+    chatStore.setFilter('private');
   }
 
   function refresh() {
@@ -142,6 +148,9 @@
                 >{np.in_combat ? 'local_fire_department' : 'person'}</span>
                 <span class="player-name">{np.username}</span>
                 <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
+                <button class="pm-btn" onclick={() => openPM(np.username)} title="Send PM to {np.username}">
+                  <span class="material-icons" style="font-size:13px">mail</span>
+                </button>
               </div>
             {/each}
           </div>
@@ -375,6 +384,24 @@
   .player-ship {
     font-size: 0.68rem;
     color: #546e7a;
+  }
+
+  .pm-btn {
+    display: flex;
+    align-items: center;
+    padding: 2px 4px;
+    background: transparent;
+    border: 1px solid rgba(239,154,154,0.25);
+    border-radius: 3px;
+    color: #ef9a9a;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .pm-btn:hover {
+    background: rgba(239,154,154,0.12);
+    border-color: rgba(239,154,154,0.5);
   }
 
   /* ---- Connection List ---- */

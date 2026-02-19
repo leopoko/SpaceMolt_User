@@ -22,17 +22,15 @@
   // Selected stored item (clickable rows)
   let selectedStoredItem = $state<string | null>(null);
 
-  // Auto-refresh when Base tab is selected
+  // Auto-refresh when Base tab is selected (view_storage is chained from get_base ok handler)
   $effect(() => {
     if (uiStore.activeTab.label === 'Base' && playerStore.isDocked) {
       ws.getBase();
-      ws.viewStorage();
     }
   });
 
   function loadStorage() {
     ws.getBase();
-    ws.viewStorage();
   }
 
   /** Unique item suggestions from both storage and cargo */
