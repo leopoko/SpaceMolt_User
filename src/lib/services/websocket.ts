@@ -1,7 +1,7 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
-  Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
+  Faction, Recipe, FleetData, ChatMessage, EventLogEntry, Module,
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition,
   ForumThread, ForumReply, ForumCategory
@@ -24,6 +24,7 @@ import { contactsStore } from '$lib/stores/contacts.svelte';
 import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
 import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
+import { scavengerStore } from '$lib/stores/scavenger.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -217,7 +218,9 @@ class WebSocketService {
         const pl = p<StateUpdatePayload>(msg);
         if (pl.player) playerStore.update(pl.player);
         if (pl.ship) shipStore.updateCurrent(pl.ship);
-        if (pl.modules) shipStore.updateModules(pl.modules);
+        // modules: null means no modules; truthy array updates; undefined = no change
+        if (pl.modules === null) shipStore.updateModules([]);
+        else if (pl.modules) shipStore.updateModules(pl.modules);
         if (pl.nearby) systemStore.setNearby(pl.nearby);
         if (pl.in_combat !== undefined) combatStore.setInCombat(pl.in_combat);
         // Also handle legacy fields (events, chat, system) for forward-compatibility
@@ -326,6 +329,22 @@ class WebSocketService {
           if (result.base_id) {
             playerStore.update({ home_base: result.base_id as string });
           }
+        } else if (cmd === 'install_mod') {
+          const modId = (result?.module_id as string) ?? '';
+          const message = (result?.message as string) ?? `Module installed: ${modId}`;
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
+        } else if (cmd === 'uninstall_mod') {
+          const modId = (result?.module_id as string) ?? '';
+          const message = (result?.message as string) ?? `Module uninstalled: ${modId}`;
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
         } else if (cmd === 'craft') {
           const message = (result?.message as string) ?? 'Craft complete';
           craftingStore.setLastResult(message);
@@ -337,6 +356,32 @@ class WebSocketService {
           eventsStore.add({ type: 'nav', message });
           // Survey may reveal new POIs; refresh system data
           this.getSystem();
+        } else if (cmd === 'loot_wreck') {
+          const message = (result?.message as string) ?? 'Loot collected';
+          eventsStore.add({ type: 'info', message });
+          // Refresh wreck list after looting
+          this.getWrecks();
+        } else if (cmd === 'tow_wreck') {
+          const message = (result?.message as string) ?? 'Wreck attached to tow';
+          eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(true);
+          this.getWrecks();
+        } else if (cmd === 'release_tow') {
+          const message = (result?.message as string) ?? 'Tow released';
+          eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(false);
+          this.getWrecks();
+        } else if (cmd === 'sell_wreck') {
+          const message = (result?.message as string) ?? 'Wreck sold';
+          eventsStore.add({ type: 'trade', message });
+          scavengerStore.setTowing(false);
+        } else if (cmd === 'scrap_wreck') {
+          const message = (result?.message as string) ?? 'Wreck scrapped';
+          eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(false);
+        } else if (cmd === 'self_destruct') {
+          const message = (result?.message as string) ?? 'Ship self-destructed';
+          eventsStore.add({ type: 'combat', message });
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -652,6 +697,23 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission declined' });
           break;
         }
+        // Scavenger: get_wrecks response — { count: N, wrecks: [...] | null }
+        {
+          const raw = msg.payload as Record<string, unknown>;
+          if (pl.action === 'get_wrecks' || (raw.count !== undefined && 'wrecks' in raw)) {
+            const rawWrecks = Array.isArray(raw.wrecks) ? (raw.wrecks as Array<Record<string, unknown>>) : [];
+            const normalized = rawWrecks.map(w => ({
+              id: (w.wreck_id as string) ?? (w.id as string) ?? '',
+              ship_type: (w.ship_type as string) ?? (w.ship_class as string) ?? 'Unknown',
+              loot: Array.isArray(w.loot) ? (w.loot as Array<{ item_id: string; quantity: number; name?: string }>) : Array.isArray(w.items) ? (w.items as Array<{ item_id: string; quantity: number; name?: string }>) : [],
+              expires_at: (w.expires_at as number) ?? 0,
+              owner: (w.owner as string) ?? (w.owner_name as string) ?? undefined,
+              wreck_type: (w.wreck_type as string) ?? (w.type as string) ?? undefined,
+            }));
+            scavengerStore.setWrecks(normalized as never);
+            break;
+          }
+        }
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -926,6 +988,17 @@ class WebSocketService {
           }
           eventsStore.add({ type: 'nav', message: `Jumped to ${dest}${fromSystem ? ` (from ${fromSystem})` : ''}` });
           this.getSystem();
+        } else if (!pl.action && (msg.payload as Record<string, unknown>)?.player && (msg.payload as Record<string, unknown>)?.ship) {
+          // get_status response: has player + ship at top level, no action field
+          const raw = msg.payload as Record<string, unknown>;
+          if (raw.player) playerStore.update(raw.player as never);
+          if (raw.ship) shipStore.updateCurrent(raw.ship as never);
+          // modules can be null (no modules installed) or Module[]
+          if (raw.modules === null || (Array.isArray(raw.modules) && raw.modules.length === 0)) {
+            shipStore.updateModules([]);
+          } else if (Array.isArray(raw.modules)) {
+            shipStore.updateModules(raw.modules as Module[]);
+          }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
           if (pl.message) {
@@ -1030,6 +1103,34 @@ class WebSocketService {
     }
   }
 
+  // ---- Scavenger ----
+
+  getWrecks() { this.send({ type: 'get_wrecks' }); }
+
+  lootWreck(wreckId: string, itemId: string, quantity: number) {
+    this.send({ type: 'loot_wreck', payload: { wreck_id: wreckId, item_id: itemId, quantity } });
+  }
+
+  towWreck(wreckId: string) {
+    this.send({ type: 'tow_wreck', payload: { wreck_id: wreckId } });
+  }
+
+  releaseTow() {
+    this.send({ type: 'release_tow' });
+  }
+
+  sellWreck() {
+    this.send({ type: 'sell_wreck' });
+  }
+
+  scrapWreck() {
+    this.send({ type: 'scrap_wreck' });
+  }
+
+  selfDestruct() {
+    this.send({ type: 'self_destruct' });
+  }
+
   // ---- Mining ----
 
   mine(asteroidId?: string) {
@@ -1109,9 +1210,14 @@ class WebSocketService {
 
   listShips() { this.send({ type: 'list_ships' }); }
   getShipCatalog() { this.send({ type: 'get_ships' }); }
-  buyShip(shipType: string) { this.send({ type: 'buy_ship', payload: { ship_type: shipType } }); }
-  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship: shipId } }); }
-  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship: shipId } }); }
+  buyShip(shipClass: string) { this.send({ type: 'buy_ship', payload: { ship_class: shipClass } }); }
+  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship_id: shipId } }); }
+  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship_id: shipId } }); }
+
+  // ---- Module Management ----
+
+  installMod(moduleId: string) { this.send({ type: 'install_mod', payload: { module_id: moduleId } }); }
+  uninstallMod(moduleId: string) { this.send({ type: 'uninstall_mod', payload: { module_id: moduleId } }); }
 
   // ---- Crafting ----
 

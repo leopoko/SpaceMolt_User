@@ -22,6 +22,14 @@
   let showServiceButtons = $derived(
     playerStore.isDocked || actionQueueStore.recordingMode
   );
+
+  function uninstallModule(modId: string, modName: string) {
+    actionQueueStore.enqueue(`Uninstall ${modName}`, () => ws.uninstallMod(modId));
+  }
+
+  function installModule(itemId: string, itemName: string) {
+    actionQueueStore.enqueue(`Install ${itemName}`, () => ws.installMod(itemId));
+  }
 </script>
 
 <div class="two-col">
@@ -71,16 +79,65 @@
           </div>
         {/if}
 
+        <!-- Installed Modules -->
         {#if shipStore.moduleData.length > 0}
-          <p class="tab-section-title" style="margin-top:14px">Modules</p>
+          <p class="tab-section-title" style="margin-top:14px">
+            Modules
+            <span class="module-count mono">{shipStore.moduleData.length}</span>
+          </p>
           <div class="module-list">
             {#each shipStore.moduleData as mod}
               <div class="module-item" class:active={mod.active ?? true}>
-                <span class="mod-name">{mod.name}</span>
-                <span class="mod-type mono">{mod.type_id ?? mod.type}</span>
-                <span class="mod-wear mono" class:warn={(mod.wear ?? 0) > 70}>
-                  {mod.wear_status ?? `${mod.wear ?? 0}% wear`}
-                </span>
+                <div class="mod-info">
+                  <span class="mod-name">{mod.name}</span>
+                  <div class="mod-details">
+                    <span class="mod-type mono">{mod.type_id ?? mod.type}</span>
+                    {#if mod.cpu_usage || mod.cpu_cost}
+                      <span class="mod-res mono">CPU:{mod.cpu_usage ?? mod.cpu_cost}</span>
+                    {/if}
+                    {#if mod.power_usage || mod.power_cost}
+                      <span class="mod-res mono">PWR:{mod.power_usage ?? mod.power_cost}</span>
+                    {/if}
+                    <span class="mod-wear mono" class:warn={(mod.wear ?? 0) > 70}>
+                      {mod.wear_status ?? `${mod.wear ?? 0}% wear`}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  class="mod-action-btn uninstall"
+                  title="Uninstall module (returns to cargo)"
+                  onclick={() => uninstallModule(mod.id, mod.name)}
+                >
+                  <span class="material-icons">eject</span>
+                </button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="tab-section-title" style="margin-top:14px">Modules</p>
+          <p class="empty-hint">No modules installed</p>
+        {/if}
+
+        <!-- Install from Cargo -->
+        {#if shipStore.cargo.length > 0}
+          <p class="tab-section-title" style="margin-top:14px">
+            Install from Cargo
+          </p>
+          <p class="install-hint">Select a module item from cargo to install.</p>
+          <div class="cargo-module-list">
+            {#each shipStore.cargo as item}
+              <div class="cargo-mod-item">
+                <div class="cargo-mod-info">
+                  <span class="cargo-mod-name">{item.name ?? item.item_id}</span>
+                  <span class="cargo-mod-qty mono">x{item.quantity}</span>
+                </div>
+                <button
+                  class="mod-action-btn install"
+                  title="Install module from cargo"
+                  onclick={() => installModule(item.item_id, item.name ?? item.item_id)}
+                >
+                  <span class="material-icons">download</span>
+                </button>
               </div>
             {/each}
           </div>
@@ -221,13 +278,23 @@
   }
   .refuel-btn:hover { background: rgba(255,152,0,0.1); }
 
+  .module-count {
+    font-size: 0.6rem;
+    color: #546e7a;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 4px;
+  }
+
+
   .module-list { display: flex; flex-direction: column; gap: 4px; }
 
   .module-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
+    padding: 6px 8px;
     border-radius: 3px;
     background: rgba(255,255,255,0.02);
     border: 1px solid rgba(255,255,255,0.04);
@@ -235,10 +302,86 @@
 
   .module-item.active { border-color: rgba(76,175,80,0.2); }
 
-  .mod-name { font-size: 0.75rem; color: #90a4ae; flex: 1; }
+  .mod-info { flex: 1; min-width: 0; }
+  .mod-name { font-size: 0.75rem; color: #90a4ae; display: block; }
+  .mod-details {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
   .mod-type { font-size: 0.65rem; color: #4a6070; }
+  .mod-res { font-size: 0.6rem; color: #546e7a; }
   .mod-wear { font-size: 0.65rem; color: #607d8b; }
   .mod-wear.warn { color: #ff7043; }
+
+  .mod-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .mod-action-btn .material-icons { font-size: 16px; }
+
+  .mod-action-btn.uninstall {
+    color: #ff7043;
+    border-color: rgba(255,112,67,0.2);
+  }
+  .mod-action-btn.uninstall:hover {
+    background: rgba(255,112,67,0.12);
+    border-color: rgba(255,112,67,0.4);
+  }
+
+  .mod-action-btn.install {
+    color: #66bb6a;
+    border-color: rgba(102,187,106,0.2);
+  }
+  .mod-action-btn.install:hover {
+    background: rgba(102,187,106,0.12);
+    border-color: rgba(102,187,106,0.4);
+  }
+
+  /* Install from Cargo section */
+  .install-hint {
+    font-size: 0.65rem;
+    color: #37474f;
+    margin: 0 0 6px 0;
+  }
+
+  .cargo-module-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cargo-mod-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .cargo-mod-info { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .cargo-mod-name {
+    font-size: 0.73rem;
+    color: #90a4ae;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cargo-mod-qty { font-size: 0.62rem; color: #546e7a; flex-shrink: 0; }
 
   .item-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 

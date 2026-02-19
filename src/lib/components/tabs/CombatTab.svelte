@@ -5,7 +5,13 @@
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
   import { chatStore } from '$lib/stores/chat.svelte';
+  import ScavengerSubTab from './ScavengerSubTab.svelte';
 
+  // ---- Sub-tab state ----
+  type SubTab = 'combat' | 'scavenger';
+  let activeSubTab = $state<SubTab>('combat');
+
+  // ---- Combat sub-tab state ----
   let selectedTargetId = $state<string | null>(null);
   let filterText = $state('');
   let sortBy = $state<'name' | 'ship' | 'combat'>('name');
@@ -112,249 +118,316 @@
   });
 </script>
 
-<div class="two-col">
-  <!-- Left: Targets -->
-  <Card class="space-card">
-    <Content>
-      <p class="tab-section-title">Nearby Targets</p>
-
-      <!-- Filter & Sort controls -->
-      <div class="controls-row">
-        <div class="filter-box">
-          <span class="material-icons filter-icon">search</span>
-          <input
-            type="text"
-            class="filter-input"
-            placeholder="Filter..."
-            bind:value={filterText}
-          />
-        </div>
-        <div class="sort-btns">
-          <button class="sort-btn" class:active={sortBy === 'name'} onclick={() => sortBy = 'name'} title="Sort by name">A-Z</button>
-          <button class="sort-btn" class:active={sortBy === 'ship'} onclick={() => sortBy = 'ship'} title="Sort by ship">SHIP</button>
-          <button class="sort-btn" class:active={sortBy === 'combat'} onclick={() => sortBy = 'combat'} title="Sort by combat status">!</button>
-        </div>
-      </div>
-
-      {#if displayTargets().length > 0}
-        <div class="target-list">
-          {#each displayTargets() as target (target.id)}
-            <div
-              class="target-item"
-              class:selected={selectedTargetId === target.id}
-              onclick={() => selectTarget(target.id)}
-              role="button"
-              tabindex="0"
-              onkeydown={(e) => e.key === 'Enter' && selectTarget(target.id)}
-            >
-              <div class="target-info">
-                <span class="target-name">
-                  {target.username}
-                  {#if target.in_combat}
-                    <span class="combat-indicator">IN COMBAT</span>
-                  {/if}
-                </span>
-                <span class="target-ship mono">{target.ship}</span>
-              </div>
-              <div class="target-actions">
-                <button
-                  class="action-btn scan-btn"
-                  onclick={(e) => scanTarget(e, target.id, target.username)}
-                  title="Scan {target.username}"
-                >
-                  <span class="material-icons">radar</span>
-                  SCAN
-                </button>
-                <button
-                  class="action-btn attack-btn"
-                  onclick={(e) => attackTarget(e, target.id, target.username)}
-                  title="Attack {target.username}"
-                >
-                  <span class="material-icons">gps_fixed</span>
-                  ATK
-                </button>
-                <button
-                  class="action-btn pm-btn"
-                  onclick={(e) => openPM(e, target.username)}
-                  title="PM {target.username}"
-                >
-                  <span class="material-icons">mail</span>
-                  PM
-                </button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else if rawTargets().length > 0}
-        <p class="empty-hint">No targets match filter.</p>
-      {:else}
-        <p class="empty-hint">No nearby targets detected.</p>
-      {/if}
-
-      <!-- Drones from area scan -->
-      {#if combatStore.scanResult?.drones?.length}
-        <p class="tab-section-title" style="margin-top:12px">Drones</p>
-        <div class="target-list">
-          {#each combatStore.scanResult.drones as drone}
-            <div class="target-item">
-              <div class="target-info">
-                <span class="target-name">{drone.owner_name}'s {drone.type}</span>
-                <span class="hp-bar-text mono">{drone.hull}/{drone.max_hull} HP</span>
-              </div>
-              <div class="target-actions">
-                <button
-                  class="action-btn attack-btn"
-                  onclick={(e) => attackTarget(e, drone.id, `${drone.owner_name}'s ${drone.type}`)}
-                  title="Attack drone"
-                >
-                  <span class="material-icons">gps_fixed</span>
-                  ATK
-                </button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Wrecks from area scan -->
-      {#if combatStore.scanResult?.wrecks?.length}
-        <p class="tab-section-title" style="margin-top:12px">Wrecks</p>
-        {#each combatStore.scanResult.wrecks as wreck}
-          <div class="wreck-item">
-            <span class="material-icons" style="font-size:14px;color:#546e7a">broken_image</span>
-            <span class="target-name">{wreck.ship_type}</span>
-            <span class="target-ship mono">{wreck.loot?.length ?? 0} items</span>
-          </div>
-        {/each}
-      {/if}
-    </Content>
-  </Card>
-
-  <!-- Right: Target Detail + Combat Log -->
-  <Card class="space-card">
-    <Content>
-      <!-- Selected Target Detail -->
-      {#if selectedTarget()}
-        {@const tgt = selectedTarget()}
-        {@const scan = selectedScanData}
-        <div class="detail-section">
-          <div class="detail-header">
-            <span class="material-icons" style="font-size:18px;color:#4fc3f7">person</span>
-            <span class="detail-title">{tgt.username}</span>
-            {#if tgt.in_combat}
-              <span class="combat-indicator">IN COMBAT</span>
-            {/if}
-          </div>
-          <div class="detail-grid">
-            <span class="detail-label">Ship</span>
-            <span class="detail-value mono">{tgt.ship}</span>
-            <span class="detail-label">ID</span>
-            <span class="detail-value mono id-val">{tgt.id.slice(0, 12)}...</span>
-          </div>
-
-          <div class="detail-actions">
-            <button class="action-btn-lg scan-btn" onclick={(e) => scanTarget(e, tgt.id, tgt.username)}>
-              <span class="material-icons">radar</span> Scan
-            </button>
-            <button class="action-btn-lg attack-btn" onclick={(e) => attackTarget(e, tgt.id, tgt.username)}>
-              <span class="material-icons">gps_fixed</span> Attack
-            </button>
-          </div>
-
-          <!-- Scan Result -->
-          {#if scan}
-            <div class="scan-result-panel" class:scan-failed={!scan.success}>
-              <div class="scan-result-header">
-                <span class="material-icons" style="font-size:14px">{scan.success ? 'check_circle' : 'cancel'}</span>
-                <span>Scan Result</span>
-                {#if scan.tick}
-                  <span class="scan-tick mono">T{scan.tick}</span>
-                {/if}
-                {#if !scan.success}
-                  <span class="scan-failed-badge">FAILED</span>
-                {/if}
-              </div>
-
-              {#if scan.success}
-                <div class="scan-grid">
-                  {#if scan.username}
-                    <span class="scan-label">Name</span>
-                    <span class="scan-value">{scan.username}</span>
-                  {/if}
-                  {#if scan.ship_class}
-                    <span class="scan-label">Ship</span>
-                    <span class="scan-value mono">{scan.ship_class}</span>
-                  {/if}
-                  {#if scan.hull !== undefined}
-                    <span class="scan-label">Hull</span>
-                    <span class="scan-value hull-val mono">{scan.hull}</span>
-                  {/if}
-                  {#if scan.shield !== undefined}
-                    <span class="scan-label">Shield</span>
-                    <span class="scan-value shield-val mono">{scan.shield}</span>
-                  {/if}
-                  {#if scan.cloaked !== undefined}
-                    <span class="scan-label">Cloaked</span>
-                    <span class="scan-value">{scan.cloaked ? 'Yes' : 'No'}</span>
-                  {/if}
-                  {#if scan.faction_id}
-                    <span class="scan-label">Faction</span>
-                    <span class="scan-value">{scan.faction_id}</span>
-                  {/if}
-                </div>
-                {#if scan.revealed_info?.length}
-                  <div class="revealed-info">
-                    <span class="scan-label">Revealed:</span>
-                    {#each scan.revealed_info as info}
-                      <span class="revealed-tag">{info}</span>
-                    {/each}
-                  </div>
-                {/if}
-              {:else}
-                <p class="scan-fail-msg">
-                  Scan could not penetrate target defenses. Try improving your scanner module.
-                </p>
-              {/if}
-            </div>
-          {/if}
-        </div>
-        <div class="section-divider"></div>
-      {:else}
-        <div class="no-selection">
-          <span class="material-icons" style="font-size:24px;color:#263238">ads_click</span>
-          <p>Select a target to view details</p>
-        </div>
-        <div class="section-divider"></div>
-      {/if}
-
-      <!-- Combat Log -->
-      <p class="tab-section-title">Combat Log</p>
-      {#if combatStore.inCombat}
-        <div class="in-combat-badge">IN COMBAT</div>
-      {/if}
-      <div class="combat-log">
-        {#each combatStore.combatLog as event, i (i)}
-          <div class="combat-entry" class:destroyed={event.result === 'destroyed'}>
-            <span class="tick mono">{formatTick(event.tick)}</span>
-            <span class="attacker">{event.attacker}</span>
-            <span class="arrow">{' -> '}</span>
-            <span class="defender">{event.defender}</span>
-            <span class="damage mono" class:miss={event.result === 'miss'}>
-              {event.result === 'miss' ? 'MISS' : `-${event.damage}`}
-            </span>
-            {#if event.result === 'destroyed'}
-              <span class="destroyed-badge">DESTROYED</span>
-            {/if}
-          </div>
-        {:else}
-          <p class="empty-hint">No combat activity</p>
-        {/each}
-      </div>
-    </Content>
-  </Card>
+<!-- Sub-tab bar -->
+<div class="sub-tab-bar">
+  <button
+    class="sub-tab-btn"
+    class:active={activeSubTab === 'combat'}
+    onclick={() => activeSubTab = 'combat'}
+  >
+    <span class="material-icons">gps_fixed</span>
+    <span class="sub-tab-label">Combat</span>
+  </button>
+  <button
+    class="sub-tab-btn"
+    class:active={activeSubTab === 'scavenger'}
+    onclick={() => activeSubTab = 'scavenger'}
+  >
+    <span class="material-icons">broken_image</span>
+    <span class="sub-tab-label">Scavenger</span>
+  </button>
 </div>
 
+{#if activeSubTab === 'combat'}
+  <!-- === Combat Sub-Tab (original content) === -->
+  <div class="two-col">
+    <!-- Left: Targets -->
+    <Card class="space-card">
+      <Content>
+        <p class="tab-section-title">Nearby Targets</p>
+
+        <!-- Filter & Sort controls -->
+        <div class="controls-row">
+          <div class="filter-box">
+            <span class="material-icons filter-icon">search</span>
+            <input
+              type="text"
+              class="filter-input"
+              placeholder="Filter..."
+              bind:value={filterText}
+            />
+          </div>
+          <div class="sort-btns">
+            <button class="sort-btn" class:active={sortBy === 'name'} onclick={() => sortBy = 'name'} title="Sort by name">A-Z</button>
+            <button class="sort-btn" class:active={sortBy === 'ship'} onclick={() => sortBy = 'ship'} title="Sort by ship">SHIP</button>
+            <button class="sort-btn" class:active={sortBy === 'combat'} onclick={() => sortBy = 'combat'} title="Sort by combat status">!</button>
+          </div>
+        </div>
+
+        {#if displayTargets().length > 0}
+          <div class="target-list">
+            {#each displayTargets() as target (target.id)}
+              <div
+                class="target-item"
+                class:selected={selectedTargetId === target.id}
+                onclick={() => selectTarget(target.id)}
+                role="button"
+                tabindex="0"
+                onkeydown={(e) => e.key === 'Enter' && selectTarget(target.id)}
+              >
+                <div class="target-info">
+                  <span class="target-name">
+                    {target.username}
+                    {#if target.in_combat}
+                      <span class="combat-indicator">IN COMBAT</span>
+                    {/if}
+                  </span>
+                  <span class="target-ship mono">{target.ship}</span>
+                </div>
+                <div class="target-actions">
+                  <button
+                    class="action-btn scan-btn"
+                    onclick={(e) => scanTarget(e, target.id, target.username)}
+                    title="Scan {target.username}"
+                  >
+                    <span class="material-icons">radar</span>
+                    SCAN
+                  </button>
+                  <button
+                    class="action-btn attack-btn"
+                    onclick={(e) => attackTarget(e, target.id, target.username)}
+                    title="Attack {target.username}"
+                  >
+                    <span class="material-icons">gps_fixed</span>
+                    ATK
+                  </button>
+                  <button
+                    class="action-btn pm-btn"
+                    onclick={(e) => openPM(e, target.username)}
+                    title="PM {target.username}"
+                  >
+                    <span class="material-icons">mail</span>
+                    PM
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else if rawTargets().length > 0}
+          <p class="empty-hint">No targets match filter.</p>
+        {:else}
+          <p class="empty-hint">No nearby targets detected.</p>
+        {/if}
+
+        <!-- Drones from area scan -->
+        {#if combatStore.scanResult?.drones?.length}
+          <p class="tab-section-title" style="margin-top:12px">Drones</p>
+          <div class="target-list">
+            {#each combatStore.scanResult.drones as drone}
+              <div class="target-item">
+                <div class="target-info">
+                  <span class="target-name">{drone.owner_name}'s {drone.type}</span>
+                  <span class="hp-bar-text mono">{drone.hull}/{drone.max_hull} HP</span>
+                </div>
+                <div class="target-actions">
+                  <button
+                    class="action-btn attack-btn"
+                    onclick={(e) => attackTarget(e, drone.id, `${drone.owner_name}'s ${drone.type}`)}
+                    title="Attack drone"
+                  >
+                    <span class="material-icons">gps_fixed</span>
+                    ATK
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Wrecks from area scan -->
+        {#if combatStore.scanResult?.wrecks?.length}
+          <p class="tab-section-title" style="margin-top:12px">Wrecks</p>
+          {#each combatStore.scanResult.wrecks as wreck}
+            <div class="wreck-item">
+              <span class="material-icons" style="font-size:14px;color:#546e7a">broken_image</span>
+              <span class="target-name">{wreck.ship_type}</span>
+              <span class="target-ship mono">{wreck.loot?.length ?? 0} items</span>
+            </div>
+          {/each}
+        {/if}
+      </Content>
+    </Card>
+
+    <!-- Right: Target Detail + Combat Log -->
+    <Card class="space-card">
+      <Content>
+        <!-- Selected Target Detail -->
+        {#if selectedTarget()}
+          {@const tgt = selectedTarget()}
+          {@const scan = selectedScanData}
+          <div class="detail-section">
+            <div class="detail-header">
+              <span class="material-icons" style="font-size:18px;color:#4fc3f7">person</span>
+              <span class="detail-title">{tgt.username}</span>
+              {#if tgt.in_combat}
+                <span class="combat-indicator">IN COMBAT</span>
+              {/if}
+            </div>
+            <div class="detail-grid">
+              <span class="detail-label">Ship</span>
+              <span class="detail-value mono">{tgt.ship}</span>
+              <span class="detail-label">ID</span>
+              <span class="detail-value mono id-val">{tgt.id.slice(0, 12)}...</span>
+            </div>
+
+            <div class="detail-actions">
+              <button class="action-btn-lg scan-btn" onclick={(e) => scanTarget(e, tgt.id, tgt.username)}>
+                <span class="material-icons">radar</span> Scan
+              </button>
+              <button class="action-btn-lg attack-btn" onclick={(e) => attackTarget(e, tgt.id, tgt.username)}>
+                <span class="material-icons">gps_fixed</span> Attack
+              </button>
+            </div>
+
+            <!-- Scan Result -->
+            {#if scan}
+              <div class="scan-result-panel" class:scan-failed={!scan.success}>
+                <div class="scan-result-header">
+                  <span class="material-icons" style="font-size:14px">{scan.success ? 'check_circle' : 'cancel'}</span>
+                  <span>Scan Result</span>
+                  {#if scan.tick}
+                    <span class="scan-tick mono">T{scan.tick}</span>
+                  {/if}
+                  {#if !scan.success}
+                    <span class="scan-failed-badge">FAILED</span>
+                  {/if}
+                </div>
+
+                {#if scan.success}
+                  <div class="scan-grid">
+                    {#if scan.username}
+                      <span class="scan-label">Name</span>
+                      <span class="scan-value">{scan.username}</span>
+                    {/if}
+                    {#if scan.ship_class}
+                      <span class="scan-label">Ship</span>
+                      <span class="scan-value mono">{scan.ship_class}</span>
+                    {/if}
+                    {#if scan.hull !== undefined}
+                      <span class="scan-label">Hull</span>
+                      <span class="scan-value hull-val mono">{scan.hull}</span>
+                    {/if}
+                    {#if scan.shield !== undefined}
+                      <span class="scan-label">Shield</span>
+                      <span class="scan-value shield-val mono">{scan.shield}</span>
+                    {/if}
+                    {#if scan.cloaked !== undefined}
+                      <span class="scan-label">Cloaked</span>
+                      <span class="scan-value">{scan.cloaked ? 'Yes' : 'No'}</span>
+                    {/if}
+                    {#if scan.faction_id}
+                      <span class="scan-label">Faction</span>
+                      <span class="scan-value">{scan.faction_id}</span>
+                    {/if}
+                  </div>
+                  {#if scan.revealed_info?.length}
+                    <div class="revealed-info">
+                      <span class="scan-label">Revealed:</span>
+                      {#each scan.revealed_info as info}
+                        <span class="revealed-tag">{info}</span>
+                      {/each}
+                    </div>
+                  {/if}
+                {:else}
+                  <p class="scan-fail-msg">
+                    Scan could not penetrate target defenses. Try improving your scanner module.
+                  </p>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <div class="section-divider"></div>
+        {:else}
+          <div class="no-selection">
+            <span class="material-icons" style="font-size:24px;color:#263238">ads_click</span>
+            <p>Select a target to view details</p>
+          </div>
+          <div class="section-divider"></div>
+        {/if}
+
+        <!-- Combat Log -->
+        <p class="tab-section-title">Combat Log</p>
+        {#if combatStore.inCombat}
+          <div class="in-combat-badge">IN COMBAT</div>
+        {/if}
+        <div class="combat-log">
+          {#each combatStore.combatLog as event, i (i)}
+            <div class="combat-entry" class:destroyed={event.result === 'destroyed'}>
+              <span class="tick mono">{formatTick(event.tick)}</span>
+              <span class="attacker">{event.attacker}</span>
+              <span class="arrow">{' -> '}</span>
+              <span class="defender">{event.defender}</span>
+              <span class="damage mono" class:miss={event.result === 'miss'}>
+                {event.result === 'miss' ? 'MISS' : `-${event.damage}`}
+              </span>
+              {#if event.result === 'destroyed'}
+                <span class="destroyed-badge">DESTROYED</span>
+              {/if}
+            </div>
+          {:else}
+            <p class="empty-hint">No combat activity</p>
+          {/each}
+        </div>
+      </Content>
+    </Card>
+  </div>
+{:else if activeSubTab === 'scavenger'}
+  <!-- === Scavenger Sub-Tab === -->
+  <ScavengerSubTab />
+{/if}
+
 <style>
+  /* ---- Sub-tab bar ---- */
+  .sub-tab-bar {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(79, 195, 247, 0.12);
+    padding-bottom: 0;
+  }
+
+  .sub-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #546e7a;
+    font-size: 0.75rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    bottom: -1px;
+  }
+
+  .sub-tab-btn .material-icons { font-size: 14px; }
+
+  .sub-tab-btn:hover {
+    color: #90a4ae;
+    background: rgba(79, 195, 247, 0.04);
+  }
+
+  .sub-tab-btn.active {
+    color: #4fc3f7;
+    border-bottom-color: #4fc3f7;
+  }
+
+  .sub-tab-label { white-space: nowrap; }
+
   /* ---- Controls ---- */
   .controls-row {
     display: flex;

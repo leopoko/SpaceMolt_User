@@ -1,5 +1,7 @@
 <script lang="ts">
   import ActiveShip from './ship/ActiveShip.svelte';
+  import ModuleList from './ship/ModuleList.svelte';
+  import ModuleEncyclopedia from './ship/ModuleEncyclopedia.svelte';
   import MyFleet from './ship/MyFleet.svelte';
   import Shipyard from './ship/Shipyard.svelte';
 
@@ -10,9 +12,11 @@
   }
 
   const subTabs: SubTab[] = [
-    { id: 'active', label: 'Active Ship', icon: 'rocket_launch' },
-    { id: 'fleet',  label: 'My Fleet',    icon: 'sailing' },
-    { id: 'yard',   label: 'Shipyard',    icon: 'store' },
+    { id: 'active',  label: 'Active Ship', icon: 'rocket_launch' },
+    { id: 'modules', label: 'Modules',     icon: 'extension' },
+    { id: 'encyclopedia', label: 'Encyclopedia', icon: 'menu_book' },
+    { id: 'fleet',   label: 'My Fleet',    icon: 'sailing' },
+    { id: 'yard',    label: 'Shipyard',    icon: 'store' },
   ];
 
   let activeSubTab = $state<string>('active');
@@ -34,6 +38,10 @@
 <div class="ship-content">
   {#if activeSubTab === 'active'}
     <ActiveShip />
+  {:else if activeSubTab === 'modules'}
+    <ModuleList />
+  {:else if activeSubTab === 'encyclopedia'}
+    <ModuleEncyclopedia />
   {:else if activeSubTab === 'fleet'}
     <MyFleet />
   {:else if activeSubTab === 'yard'}
