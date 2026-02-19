@@ -6,6 +6,7 @@
   import { baseStore } from '$lib/stores/base.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
+  import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 
   let depositItemId = $state('');
   let depositQty = $state(1);
@@ -14,30 +15,44 @@
   let creditAmount = $state(0);
   let creditMode = $state<'deposit' | 'withdraw'>('deposit');
 
+  // Auto-load station info and storage when docked and tab is shown
+  $effect(() => {
+    if (playerStore.isDocked) {
+      if (!baseStore.currentBase) ws.getBase();
+      if (!baseStore.storageData) ws.viewStorage();
+    }
+  });
+
   function loadStorage() {
-    if (playerStore.poi_id) ws.viewStorage(playerStore.poi_id);
+    ws.getBase();
+    ws.viewStorage();
   }
 
   function doDepositItem() {
     if (!depositItemId.trim() || depositQty <= 0) return;
-    ws.depositItems([{ id: depositItemId, quantity: depositQty }]);
+    const itemId = depositItemId.trim();
+    const qty = depositQty;
+    actionQueueStore.enqueue(`Deposit ${qty}x ${itemId}`, () => ws.depositItems(itemId, qty));
     depositItemId = '';
     depositQty = 1;
   }
 
   function doWithdrawItem() {
     if (!withdrawItemId.trim() || withdrawQty <= 0) return;
-    ws.withdrawItems([{ id: withdrawItemId, quantity: withdrawQty }]);
+    const itemId = withdrawItemId.trim();
+    const qty = withdrawQty;
+    actionQueueStore.enqueue(`Withdraw ${qty}x ${itemId}`, () => ws.withdrawItems(itemId, qty));
     withdrawItemId = '';
     withdrawQty = 1;
   }
 
   function doTransferCredits() {
     if (creditAmount <= 0) return;
+    const amount = creditAmount;
     if (creditMode === 'deposit') {
-      ws.depositCredits(creditAmount);
+      actionQueueStore.enqueue(`Deposit ₡${amount.toLocaleString()}`, () => ws.depositCredits(amount));
     } else {
-      ws.withdrawCredits(creditAmount);
+      actionQueueStore.enqueue(`Withdraw ₡${amount.toLocaleString()}`, () => ws.withdrawCredits(amount));
     }
     creditAmount = 0;
   }
@@ -64,14 +79,40 @@
           {#if baseStore.currentBase.owner_name}
             <p class="base-owner">Owner: {baseStore.currentBase.owner_name}</p>
           {/if}
+          {#if baseStore.currentBase.description}
+            <p class="base-desc">{baseStore.currentBase.description}</p>
+          {/if}
 
-          {#if baseStore.currentBase.services.length > 0}
+          {#if baseStore.baseCondition}
+            <p class="tab-section-title" style="margin-top:12px">Condition</p>
+            <LinearProgress
+              progress={baseStore.baseCondition.max_health > 0
+                ? baseStore.baseCondition.health / baseStore.baseCondition.max_health
+                : 0}
+              style="--mdc-theme-primary:#4caf50; margin-bottom:6px"
+            />
+            <p class="mono condition-text">
+              {baseStore.baseCondition.health} / {baseStore.baseCondition.max_health} HP
+              <span class="condition-status">({baseStore.baseCondition.status})</span>
+            </p>
+          {/if}
+
+          {#if baseStore.serviceList.length > 0}
             <p class="tab-section-title" style="margin-top:12px">Services</p>
             <div class="services">
-              {#each baseStore.currentBase.services as svc}
+              {#each baseStore.serviceList as svc}
                 <span class="service-chip">{svc}</span>
               {/each}
             </div>
+          {/if}
+
+          {#if baseStore.currentBase.defense_level !== undefined}
+            <p class="tab-section-title" style="margin-top:12px">Defense Level</p>
+            <LinearProgress
+              progress={baseStore.currentBase.defense_level / 100}
+              style="--mdc-theme-primary:#2196f3; margin-bottom:6px"
+            />
+            <p class="mono defense-text">{baseStore.currentBase.defense_level}%</p>
           {/if}
 
           {#if baseStore.storageData}
@@ -88,7 +129,7 @@
             <p class="mono credits">₡ {baseStore.credits.toLocaleString()}</p>
           {/if}
         {:else}
-          <p class="empty-hint">Click ↻ to load station info</p>
+          <p class="empty-hint">Loading station info...</p>
         {/if}
       </Content>
     </Card>
@@ -110,15 +151,17 @@
             <tbody>
               {#each baseStore.items as item}
                 <tr>
-                  <td>{item.name}</td>
+                  <td>{item.name ?? item.item_id}</td>
                   <td class="num mono">{item.quantity}</td>
                   <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
                 </tr>
               {/each}
             </tbody>
           </table>
-        {:else}
+        {:else if baseStore.storageData}
           <p class="empty-hint">No items in storage</p>
+        {:else}
+          <p class="empty-hint">Loading storage...</p>
         {/if}
 
         <!-- Deposit/Withdraw Items -->
@@ -192,6 +235,13 @@
               {#if gift.credits > 0}
                 <span class="mono credits">₡{gift.credits.toLocaleString()}</span>
               {/if}
+              {#if gift.items && gift.items.length > 0}
+                <div class="gift-items">
+                  {#each gift.items as giftItem}
+                    <span class="gift-item-entry">{giftItem.quantity}x {giftItem.name ?? giftItem.item_id}</span>
+                  {/each}
+                </div>
+              {/if}
               {#if gift.message}
                 <p class="gift-msg">{gift.message}</p>
               {/if}
@@ -240,9 +290,13 @@
   }
 
   .base-name { font-size: 1rem; color: #90caf9; margin: 0 0 2px; font-weight: 300; }
-  .base-type { font-size: 0.68rem; color: #546e7a; margin: 0 0 4px; }
+  .base-type { font-size: 0.68rem; color: #546e7a; margin: 0 0 4px; text-transform: capitalize; }
   .base-owner { font-size: 0.72rem; color: #4a6070; margin: 0; }
+  .base-desc { font-size: 0.7rem; color: #546e7a; margin: 4px 0 0; line-height: 1.4; }
   .cap-text { font-size: 0.7rem; color: #ff9800; margin: 0; }
+  .condition-text { font-size: 0.7rem; color: #4caf50; margin: 0; }
+  .condition-status { color: #546e7a; }
+  .defense-text { font-size: 0.7rem; color: #2196f3; margin: 0; }
 
   .services { display: flex; flex-wrap: wrap; gap: 4px; }
 
@@ -253,6 +307,7 @@
     border: 1px solid rgba(79,195,247,0.25);
     border-radius: 12px;
     color: #4fc3f7;
+    text-transform: capitalize;
   }
 
   .storage-table {
@@ -335,5 +390,7 @@
   }
 
   .gift-from { color: #66bb6a; }
+  .gift-items { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .gift-item-entry { font-size: 0.7rem; color: #90a4ae; }
   .gift-msg { font-size: 0.7rem; color: #546e7a; margin: 4px 0 0; }
 </style>
