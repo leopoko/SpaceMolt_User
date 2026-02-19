@@ -20,18 +20,21 @@
   let mapLoading = $state(false);
   let mapError = $state<string | null>(null);
 
-  // Camera state
+  // Camera state – use plain variables for drag perf, copy to $state via rAF
   let camX = $state(0);
   let camY = $state(0);
   let viewW = $state(6000);
   let viewH = $state(6000);
 
-  // Drag state
+  // Drag state (non-reactive for performance)
   let dragging = $state(false);
-  let dragStartX = $state(0);
-  let dragStartY = $state(0);
-  let dragCamStartX = $state(0);
-  let dragCamStartY = $state(0);
+  let _dragStartX = 0;
+  let _dragStartY = 0;
+  let _dragCamStartX = 0;
+  let _dragCamStartY = 0;
+  let _pendingCamX = 0;
+  let _pendingCamY = 0;
+  let _rafId = 0;
 
   // Container ref
   let containerEl: HTMLDivElement | undefined = $state(undefined);
@@ -85,26 +88,26 @@
     return visitedSystems.find(s => s.map.id === id) ?? null;
   });
 
-  // ---- Connections between visited systems ----
+  // ---- Connections: show if at least ONE side is visited ----
   let connections = $derived.by(() => {
     const visitedIds = new Set(visitedSystems.map(s => s.map.id));
-    const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const lines: { x1: number; y1: number; x2: number; y2: number; bothKnown: boolean }[] = [];
     const seen = new Set<string>();
     for (const sys of visitedSystems) {
       for (const connId of sys.map.connections) {
-        if (!visitedIds.has(connId)) continue;
         const key = [sys.map.id, connId].sort().join('-');
         if (seen.has(key)) continue;
         seen.add(key);
-        const other = mapLookup.get(connId)!;
-        lines.push({ x1: sys.map.x, y1: sys.map.y, x2: other.x, y2: other.y });
+        const other = mapLookup.get(connId);
+        if (!other) continue;
+        const bothKnown = visitedIds.has(connId);
+        lines.push({ x1: sys.map.x, y1: sys.map.y, x2: other.x, y2: other.y, bothKnown });
       }
     }
     return lines;
   });
 
   // ---- POI scale ----
-  // Compute a scale so that POIs within a system are visible but don't overlap neighbors
   let poiScale = $derived.by(() => {
     if (visitedSystems.length < 2) return 40;
     let minDist = Infinity;
@@ -116,7 +119,6 @@
         if (d > 0 && d < minDist) minDist = d;
       }
     }
-    // Max POI extent across all memos
     let maxExtent = 1;
     for (const sys of visitedSystems) {
       for (const poi of sys.memo.pois) {
@@ -126,7 +128,6 @@
         }
       }
     }
-    // Use 20% of min distance divided by max extent
     return Math.min(minDist * 0.2 / maxExtent, 80);
   });
 
@@ -182,7 +183,6 @@
   }
 
   // ---- LOD: asteroid belt detail level based on zoom ----
-  // viewW controls zoom - smaller = more zoomed in
   let asteroidLod = $derived.by((): 'none' | 'low' | 'medium' | 'full' => {
     if (viewW > 8000) return 'none';
     if (viewW > 4000) return 'low';
@@ -190,12 +190,14 @@
     return 'full';
   });
 
+  // Density reduced to 1/5
   function lodRockCount(): number {
+    const base = Math.floor(mapSettingsStore.rockDensity / 5);
     switch (asteroidLod) {
       case 'none': return 0;
-      case 'low': return Math.floor(mapSettingsStore.rockDensity * 0.1);
-      case 'medium': return Math.floor(mapSettingsStore.rockDensity * 0.3);
-      case 'full': return mapSettingsStore.rockDensity;
+      case 'low': return Math.max(4, Math.floor(base * 0.1));
+      case 'medium': return Math.max(8, Math.floor(base * 0.3));
+      case 'full': return base;
     }
   }
 
@@ -218,7 +220,8 @@
     const angle = isHome ? 0 : seedAngle(systemId);
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const margin = baseR * 4;
+    // Large margin to prevent popping at edges (30% of viewport)
+    const margin = Math.max(vw, vh) * 0.3;
     const rocks: { x: number; y: number; r: number; opacity: number }[] = [];
 
     for (let i = 0; i < rockCount; i++) {
@@ -229,7 +232,6 @@
       let rx = r * Math.cos(a + aJitter);
       let ry = r * Math.sin(a + aJitter);
 
-      // Apply rotation for non-home systems
       if (!isHome) {
         const rxx = rx * cos - ry * sin;
         const ryy = rx * sin + ry * cos;
@@ -240,12 +242,13 @@
       const wx = sysX + rx;
       const wy = sysY + ry;
 
-      // Viewport culling
+      // Viewport culling with generous margin
       if (wx < vx - margin || wx > vx + vw + margin ||
           wy < vy - margin || wy > vy + vh + margin) continue;
 
       const sizeFactor = 0.4 + hash(i * 43.3, orbitR * 17.1) * 0.6;
-      const opacity = 0.4 + hash(i * 73.7, orbitR * 53.3) * 0.5;
+      // Subdued opacity: 0.15–0.35 range
+      const opacity = 0.15 + hash(i * 73.7, orbitR * 53.3) * 0.2;
       rocks.push({ x: wx, y: wy, r: baseR * sizeFactor, opacity });
     }
     return rocks;
@@ -255,7 +258,6 @@
   let viewBox = $derived(`${camX - viewW / 2} ${camY - viewH / 2} ${viewW} ${viewH}`);
 
   // ---- Scale for POI rendering within the map ----
-  // This controls the visual size of POI elements relative to the current view
   let poiVisualScale = $derived(viewW * 0.012);
 
   // ---- Fetch map data ----
@@ -282,28 +284,45 @@
     }
   }
 
-  // ---- Mouse handlers for drag ----
+  // ---- Smooth drag with requestAnimationFrame ----
+  function applyDragFrame() {
+    camX = _pendingCamX;
+    camY = _pendingCamY;
+    _rafId = 0;
+  }
+
   function onMouseDown(e: MouseEvent) {
     if (e.button !== 0) return;
     dragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    dragCamStartX = camX;
-    dragCamStartY = camY;
+    _dragStartX = e.clientX;
+    _dragStartY = e.clientY;
+    _dragCamStartX = camX;
+    _dragCamStartY = camY;
     e.preventDefault();
   }
 
   function onMouseMove(e: MouseEvent) {
     if (!dragging || !containerEl) return;
     const rect = containerEl.getBoundingClientRect();
-    // Convert pixel delta to SVG coordinate delta
-    const dx = (e.clientX - dragStartX) / rect.width * viewW;
-    const dy = (e.clientY - dragStartY) / rect.height * viewH;
-    camX = dragCamStartX - dx;
-    camY = dragCamStartY - dy;
+    const dx = (e.clientX - _dragStartX) / rect.width * viewW;
+    const dy = (e.clientY - _dragStartY) / rect.height * viewH;
+    _pendingCamX = _dragCamStartX - dx;
+    _pendingCamY = _dragCamStartY - dy;
+    if (!_rafId) {
+      _rafId = requestAnimationFrame(applyDragFrame);
+    }
   }
 
   function onMouseUp() {
+    if (dragging) {
+      // Apply any pending frame immediately
+      if (_rafId) {
+        cancelAnimationFrame(_rafId);
+        _rafId = 0;
+      }
+      camX = _pendingCamX;
+      camY = _pendingCamY;
+    }
     dragging = false;
   }
 
@@ -312,15 +331,14 @@
     if (!containerEl) return;
 
     const rect = containerEl.getBoundingClientRect();
-    // Mouse position in SVG coordinates before zoom
     const mx = camX + (e.clientX - rect.left - rect.width / 2) / rect.width * viewW;
     const my = camY + (e.clientY - rect.top - rect.height / 2) / rect.height * viewH;
 
     const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-    const newW = Math.max(200, Math.min(40000, viewW * factor));
-    const newH = Math.max(200, Math.min(40000, viewH * factor));
+    // Extended zoom range: min 50, max 80000
+    const newW = Math.max(50, Math.min(80000, viewW * factor));
+    const newH = Math.max(50, Math.min(80000, viewH * factor));
 
-    // Zoom towards mouse position
     const scale = newW / viewW;
     camX = mx + (camX - mx) * scale;
     camY = my + (camY - my) * scale;
@@ -330,17 +348,17 @@
   }
 
   // Touch support
-  let touchStartDist = $state(0);
-  let touchStartViewW = $state(0);
-  let touchStartViewH = $state(0);
+  let touchStartDist = 0;
+  let touchStartViewW = 0;
+  let touchStartViewH = 0;
 
   function onTouchStart(e: TouchEvent) {
     if (e.touches.length === 1) {
       dragging = true;
-      dragStartX = e.touches[0].clientX;
-      dragStartY = e.touches[0].clientY;
-      dragCamStartX = camX;
-      dragCamStartY = camY;
+      _dragStartX = e.touches[0].clientX;
+      _dragStartY = e.touches[0].clientY;
+      _dragCamStartX = camX;
+      _dragCamStartY = camY;
     } else if (e.touches.length === 2) {
       dragging = false;
       const dx = e.touches[1].clientX - e.touches[0].clientX;
@@ -355,22 +373,31 @@
   function onTouchMove(e: TouchEvent) {
     if (e.touches.length === 1 && dragging && containerEl) {
       const rect = containerEl.getBoundingClientRect();
-      const dx = (e.touches[0].clientX - dragStartX) / rect.width * viewW;
-      const dy = (e.touches[0].clientY - dragStartY) / rect.height * viewH;
-      camX = dragCamStartX - dx;
-      camY = dragCamStartY - dy;
+      const dx = (e.touches[0].clientX - _dragStartX) / rect.width * viewW;
+      const dy = (e.touches[0].clientY - _dragStartY) / rect.height * viewH;
+      _pendingCamX = _dragCamStartX - dx;
+      _pendingCamY = _dragCamStartY - dy;
+      if (!_rafId) {
+        _rafId = requestAnimationFrame(applyDragFrame);
+      }
     } else if (e.touches.length === 2) {
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scale = touchStartDist / dist;
-      viewW = Math.max(200, Math.min(40000, touchStartViewW * scale));
-      viewH = Math.max(200, Math.min(40000, touchStartViewH * scale));
+      viewW = Math.max(50, Math.min(80000, touchStartViewW * scale));
+      viewH = Math.max(50, Math.min(80000, touchStartViewH * scale));
     }
     e.preventDefault();
   }
 
   function onTouchEnd() {
+    if (dragging && _rafId) {
+      cancelAnimationFrame(_rafId);
+      _rafId = 0;
+      camX = _pendingCamX;
+      camY = _pendingCamY;
+    }
     dragging = false;
   }
 
@@ -397,10 +424,6 @@
   // ---- Orbit computation ----
   function computeOrbits(
     pois: MemoPOI[],
-    sysX: number,
-    sysY: number,
-    systemId: string,
-    isHome: boolean,
     scale: number
   ): number[] {
     const radii = new Map<string, number>();
@@ -496,12 +519,12 @@
         </radialGradient>
       </defs>
 
-      <!-- Connection lines (dotted) -->
+      <!-- Connection lines (dotted) – shown if at least one side is visited -->
       {#each connections as conn}
         <line
           x1={conn.x1} y1={conn.y1}
           x2={conn.x2} y2={conn.y2}
-          stroke="rgba(79,195,247,0.25)"
+          stroke={conn.bothKnown ? 'rgba(79,195,247,0.25)' : 'rgba(79,195,247,0.10)'}
           stroke-width={viewW * 0.0015}
           stroke-dasharray="{viewW * 0.006} {viewW * 0.004}"
         />
@@ -516,11 +539,11 @@
         {@const sc = poiVisualScale}
         {@const sw = sc * 0.6}
         {@const mappedPois = sys.memo.pois.filter(p => p.position)}
-        {@const orbits = computeOrbits(mappedPois, sysX, sysY, sys.map.id, isHome, poiScale)}
+        {@const orbits = computeOrbits(mappedPois, poiScale)}
 
-        <!-- System background glow for current -->
+        <!-- System background glow for current (reduced 1/10) -->
         {#if isCurrent}
-          <circle cx={sysX} cy={sysY} r={sc * 12} fill="rgba(76,175,80,0.06)" />
+          <circle cx={sysX} cy={sysY} r={sc * 4} fill="rgba(76,175,80,0.03)" />
         {/if}
 
         <!-- Orbit lines -->
@@ -603,7 +626,7 @@
             )}
             {#each rocks as rock}
               <circle cx={rock.x} cy={rock.y} r={rock.r}
-                fill="#ff9800" opacity={rock.opacity} />
+                fill="#b07840" opacity={rock.opacity} />
             {/each}
 
           {:else if poi.type !== 'asteroid_belt' && poi.type !== 'asteroid'}
@@ -612,15 +635,15 @@
               stroke="rgba(255,255,255,0.15)" stroke-width={sw * 0.3} />
           {/if}
 
-          <!-- POI label (only when zoomed in enough) -->
-          {#if viewW < 4000}
+          <!-- POI label: only when very zoomed in (viewW < 1500), larger font -->
+          {#if viewW < 1500}
             <text
               x={pos.x}
-              y={pos.y + dotRadius(poi.type, sc) + sc * 0.5}
+              y={pos.y + dotRadius(poi.type, sc) + sc * 0.8}
               text-anchor="middle"
               dominant-baseline="hanging"
-              fill="#607d8b"
-              font-size={sc * 0.6}
+              fill="#78909c"
+              font-size={sc * 1.5}
               font-family="'Roboto', sans-serif"
               style="pointer-events:none"
             >{poi.name}</text>
@@ -654,17 +677,18 @@
           >home</text>
         {/if}
 
-        <!-- Current system indicator ring -->
+        <!-- Current system indicator ring (reduced 1/10) -->
         {#if isCurrent}
           <circle
             cx={sysX} cy={sysY}
-            r={sc * 8}
+            r={sc * 2.5}
             fill="none"
             stroke="#4caf50"
-            stroke-width={sw * 0.5}
-            stroke-dasharray="{sc * 1} {sc * 0.6}"
+            stroke-width={sw * 0.25}
+            stroke-dasharray="{sc * 0.5} {sc * 0.3}"
+            opacity="0.5"
           >
-            <animate attributeName="stroke-opacity" values="1;0.3;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="stroke-opacity" values="0.5;0.15;0.5" dur="3s" repeatCount="indefinite" />
           </circle>
         {/if}
 
