@@ -306,6 +306,12 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
           this.viewStorage();
+        } else if (cmd === 'craft') {
+          craftingStore.setInProgress(false);
+          const message = (result?.message as string) ?? 'Craft complete';
+          craftingStore.setLastResult(message);
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
