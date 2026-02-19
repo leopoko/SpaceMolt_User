@@ -14,7 +14,7 @@ import { systemStore } from '$lib/stores/system.svelte';
 import { combatStore } from '$lib/stores/combat.svelte';
 import { marketStore } from '$lib/stores/market.svelte';
 import { craftingStore } from '$lib/stores/crafting.svelte';
-import { factionStore } from '$lib/stores/faction.svelte';
+import { factionStore, type FactionListItem, type FactionInvite } from '$lib/stores/faction.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
@@ -496,7 +496,19 @@ class WebSocketService {
 
       case 'faction_info': {
         const pl = p<Faction>(msg);
-        factionStore.update(pl);
+        // If the returned faction matches player's faction, update own data
+        // Otherwise it's a viewed faction
+        if (pl.id && playerStore.faction_id && pl.id === playerStore.faction_id) {
+          factionStore.update(pl);
+        } else if (pl.id && !playerStore.faction_id) {
+          // Player not in a faction, this is a viewed faction
+          factionStore.setViewedFaction(pl);
+        } else if (pl.id && pl.id !== playerStore.faction_id) {
+          factionStore.setViewedFaction(pl);
+        } else {
+          // Default: update own faction data
+          factionStore.update(pl);
+        }
         break;
       }
 
@@ -540,7 +552,7 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string; factions?: unknown[]; invites?: unknown[]; faction_id?: string; faction?: Record<string, unknown> }>(msg);
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -599,6 +611,62 @@ class WebSocketService {
         if (pl.action === 'forum_upvote') {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Upvoted' });
           if (forumStore.currentThread) this.forumGetThread(forumStore.currentThread.id);
+          break;
+        }
+        // Faction responses
+        if (pl.action === 'faction_list' && pl.factions) {
+          factionStore.setFactionList(pl.factions as FactionListItem[], pl.total ?? 0);
+          break;
+        }
+        if (pl.action === 'faction_get_invites' && pl.invites) {
+          factionStore.setInvites(pl.invites as FactionInvite[]);
+          break;
+        }
+        if (pl.action === 'create_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Faction created!' });
+          // Refresh own faction info
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'join_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Joined faction!' });
+          this.getFactionInfo();
+          this.factionGetInvites();
+          break;
+        }
+        if (pl.action === 'leave_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Left faction' });
+          factionStore.update(null as unknown as Faction);
+          factionStore.reset();
+          break;
+        }
+        if (pl.action === 'faction_decline_invite') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Invite declined' });
+          this.factionGetInvites();
+          break;
+        }
+        if (pl.action === 'faction_invite') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Invite sent' });
+          break;
+        }
+        if (pl.action === 'faction_kick') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Player kicked' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_promote') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Role updated' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_edit') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Faction updated' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_deposit_credits') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Credits deposited' });
+          this.getFactionInfo();
           break;
         }
         if (pl.action === 'get_system' && pl.system) {
@@ -698,6 +766,18 @@ class WebSocketService {
       case 'forum_thread': {
         const pl = p<{ thread: ForumThread; replies: ForumReply[] }>(msg);
         forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
+        break;
+      }
+
+      case 'faction_list': {
+        const pl = p<{ factions: FactionListItem[]; total?: number }>(msg);
+        factionStore.setFactionList(pl.factions ?? [], pl.total);
+        break;
+      }
+
+      case 'faction_invites': {
+        const pl = p<{ invites: FactionInvite[] }>(msg);
+        factionStore.setInvites(pl.invites ?? []);
         break;
       }
 
@@ -849,9 +929,15 @@ class WebSocketService {
 
   // ---- Faction ----
 
-  getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', payload: { faction: factionId } }); }
-  declareWar(factionId: string) { this.send({ type: 'declare_war', payload: { faction: factionId } }); }
-  proposePeace(factionId: string) { this.send({ type: 'propose_peace', payload: { faction: factionId } }); }
+  getFactionInfo(factionId?: string) {
+    if (factionId) {
+      this.send({ type: 'faction_info', payload: { faction_id: factionId } });
+    } else {
+      this.send({ type: 'faction_info' });
+    }
+  }
+  declareWar(factionId: string) { this.send({ type: 'faction_declare_war', payload: { target_faction_id: factionId } }); }
+  proposePeace(factionId: string) { this.send({ type: 'faction_propose_peace', payload: { target_faction_id: factionId } }); }
 
   // ---- Catalog ----
 
@@ -896,7 +982,8 @@ class WebSocketService {
 
   // ---- Faction (extended) ----
 
-  factionList(limit = 20, offset = 0) {
+  factionList(limit = 50, offset = 0) {
+    factionStore.factionListLoading = true;
     this.send({ type: 'faction_list', payload: { limit, offset } });
   }
 
@@ -913,11 +1000,37 @@ class WebSocketService {
   }
 
   factionGetInvites() {
+    factionStore.invitesLoading = true;
     this.send({ type: 'faction_get_invites' });
   }
 
   factionDeclineInvite(factionId: string) {
     this.send({ type: 'faction_decline_invite', payload: { faction_id: factionId } });
+  }
+
+  factionInvite(playerIdOrUsername: string) {
+    this.send({ type: 'faction_invite', payload: { player_id: playerIdOrUsername } });
+  }
+
+  factionKick(playerIdOrUsername: string) {
+    this.send({ type: 'faction_kick', payload: { player_id: playerIdOrUsername } });
+  }
+
+  factionPromote(playerIdOrUsername: string, roleId: string) {
+    this.send({ type: 'faction_promote', payload: { player_id: playerIdOrUsername, role_id: roleId } });
+  }
+
+  factionEdit(opts: { description?: string; charter?: string; primary_color?: string; secondary_color?: string }) {
+    this.send({ type: 'faction_edit', payload: opts });
+  }
+
+  factionDepositCredits(amount: number) {
+    this.send({ type: 'faction_deposit_credits', payload: { amount } });
+  }
+
+  factionViewInfo(factionId: string) {
+    factionStore.viewedFactionLoading = true;
+    this.send({ type: 'faction_info', payload: { faction_id: factionId } });
   }
 
   // ---- Chat ----

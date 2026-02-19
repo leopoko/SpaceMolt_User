@@ -1,7 +1,40 @@
 import type { Faction } from '$lib/types/game';
 
+export interface FactionListItem {
+  id: string;
+  name: string;
+  tag: string;
+  description?: string;
+  leader_name?: string;
+  member_count?: number;
+  standing?: number;
+  primary_color?: string;
+  secondary_color?: string;
+}
+
+export interface FactionInvite {
+  faction_id: string;
+  faction_name: string;
+  faction_tag?: string;
+  invited_by?: string;
+  invited_at?: string;
+}
+
 class FactionStore {
   data = $state<Faction | null>(null);
+
+  // Faction list (from faction_list)
+  factionList = $state<FactionListItem[]>([]);
+  factionListTotal = $state(0);
+  factionListLoading = $state(false);
+
+  // Viewing another faction's info
+  viewedFaction = $state<Faction | null>(null);
+  viewedFactionLoading = $state(false);
+
+  // Invites
+  invites = $state<FactionInvite[]>([]);
+  invitesLoading = $state(false);
 
   get name(): string { return this.data?.name ?? ''; }
   get members() { return this.data?.members ?? []; }
@@ -13,8 +46,32 @@ class FactionStore {
     this.data = data;
   }
 
+  setFactionList(items: FactionListItem[], total?: number) {
+    this.factionList = items;
+    this.factionListTotal = total ?? items.length;
+    this.factionListLoading = false;
+  }
+
+  setViewedFaction(data: Faction) {
+    this.viewedFaction = data;
+    this.viewedFactionLoading = false;
+  }
+
+  clearViewedFaction() {
+    this.viewedFaction = null;
+  }
+
+  setInvites(invites: FactionInvite[]) {
+    this.invites = invites;
+    this.invitesLoading = false;
+  }
+
   reset() {
     this.data = null;
+    this.factionList = [];
+    this.factionListTotal = 0;
+    this.viewedFaction = null;
+    this.invites = [];
   }
 }
 
