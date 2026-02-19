@@ -1542,9 +1542,15 @@ class WebSocketService {
 
   // ---- Player-to-Player Trade ----
 
-  tradeOffer(targetId: string, credits: number, items: Record<string, number>) {
+  tradeOffer(targetId: string, offerCredits: number, offerItems: Record<string, number>, requestCredits: number, requestItems: Record<string, number>) {
     tradeStore.loading = true;
-    this.send({ type: 'trade_offer', payload: { target_id: targetId, credits, items } });
+    this.send({ type: 'trade_offer', payload: {
+      target_id: targetId,
+      offer_credits: offerCredits,
+      offer_items: offerItems,
+      request_credits: requestCredits,
+      request_items: requestItems,
+    } });
   }
 
   tradeAccept(tradeId: string) {
