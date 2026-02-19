@@ -24,6 +24,7 @@ import { contactsStore } from '$lib/stores/contacts.svelte';
 import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
 import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
+import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 
 // All server messages use { type, payload: {...} }.
@@ -962,6 +963,17 @@ class WebSocketService {
 
           // Auto-save system memo whenever we get system data
           systemMemoStore.save(systemStore.data);
+
+          // Detect home base system: if any POI matches player's home_base, mark this system
+          const homeBasePoi = playerStore.homeBase;
+          if (homeBasePoi && systemStore.data) {
+            const hasHome = (systemStore.data.pois ?? []).some(
+              poi => poi.id === homeBasePoi || poi.base_id === homeBasePoi
+            );
+            if (hasHome && explorerStore.homeBaseSystemId !== systemStore.data.id) {
+              explorerStore.setHomeBase(systemStore.data.id);
+            }
+          }
 
           // Also update currentPoi if provided
           if (pl.poi) {
