@@ -614,12 +614,18 @@ export interface ForumThread {
   title: string;
   content: string;
   author_id: string;
-  author_name: string;
+  author: string;
+  author_empire?: string;
+  author_faction_tag?: string;
   category: ForumCategory;
   upvotes: number;
   reply_count: number;
+  replies?: ForumReply[];
   created_at: string;
   updated_at: string;
+  pinned?: boolean;
+  locked?: boolean;
+  is_dev_team?: boolean;
 }
 
 export interface ForumReply {
@@ -627,9 +633,12 @@ export interface ForumReply {
   thread_id: string;
   content: string;
   author_id: string;
-  author_name: string;
+  author: string;
+  author_empire?: string;
+  author_faction_tag?: string;
   upvotes: number;
   created_at: string;
+  is_dev_team?: boolean;
 }
 
 export interface ForumListResponse {
@@ -645,7 +654,7 @@ export interface ForumThreadDetail {
   replies: ForumReply[];
 }
 
-export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'factions';
+export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'factions' | 'strategies' | 'features' | string;
 
 // ---- Game State (full snapshot) ----
 

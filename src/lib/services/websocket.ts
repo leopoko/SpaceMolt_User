@@ -551,8 +551,8 @@ class WebSocketService {
           marketStore.setMyOrders(pl.orders);
           break;
         }
-        // Forum responses
-        if (pl.action === 'forum_list' && pl.threads) {
+        // Forum responses (may come with action field or without)
+        if ((pl.action === 'forum_list' || (!pl.action && pl.threads && pl.per_page !== undefined)) && pl.threads) {
           forumStore.setThreadList({
             threads: pl.threads,
             page: pl.page ?? 1,
@@ -562,11 +562,11 @@ class WebSocketService {
           });
           break;
         }
-        if (pl.action === 'forum_get_thread' && pl.thread) {
+        if ((pl.action === 'forum_get_thread' || (!pl.action && pl.thread)) && pl.thread) {
           forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
           break;
         }
-        if (pl.action === 'forum_create_thread' && pl.thread_id) {
+        if ((pl.action === 'forum_create_thread' || pl.action === 'forum_create') && pl.thread_id) {
           forumStore.addMyThread({
             id: pl.thread_id,
             title: pl.title ?? '',

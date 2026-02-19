@@ -56,9 +56,10 @@ class ForumStore {
     this.loading = false;
   }
 
-  setThreadDetail(thread: ForumThread, replies: ForumReply[]) {
+  setThreadDetail(thread: ForumThread, replies?: ForumReply[]) {
     this.currentThread = thread;
-    this.currentReplies = replies;
+    // Replies may come inline in the thread object or as a separate array
+    this.currentReplies = replies ?? thread.replies ?? [];
     this.loadingThread = false;
   }
 

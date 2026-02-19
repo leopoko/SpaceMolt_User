@@ -17,12 +17,14 @@
   // Reply form
   let replyContent = $state('');
 
-  const categoryLabels: Record<ForumCategory, string> = {
+  const categoryLabels: Record<string, string> = {
     general: 'General',
     bugs: 'Bugs',
     suggestions: 'Suggestions',
     trading: 'Trading',
     factions: 'Factions',
+    strategies: 'Strategies',
+    features: 'Features',
   };
 
   const categoryColors: Record<string, string> = {
@@ -31,6 +33,8 @@
     suggestions: '#66bb6a',
     trading: '#ffd700',
     factions: '#b39ddb',
+    strategies: '#ff9800',
+    features: '#4fc3f7',
   };
 
   function loadThreads(page = 1) {
@@ -88,12 +92,8 @@
     }
   }
 
-  // Load threads on mount
-  $effect(() => {
-    if (view === 'list' && forumStore.threads.length === 0 && !forumStore.loading) {
-      loadThreads();
-    }
-  });
+  // Auto-load threads on mount
+  loadThreads();
 </script>
 
 {#if view === 'list'}
@@ -126,7 +126,7 @@
               <span class="thread-title">{thread.title}</span>
             </div>
             <div class="thread-meta">
-              <span class="thread-author">{thread.author_name}</span>
+              <span class="thread-author">{thread.author}{#if thread.author_faction_tag} <span class="faction-tag">[{thread.author_faction_tag}]</span>{/if}</span>
               <span class="thread-date">{formatDate(thread.created_at)}</span>
               <span class="thread-stats">
                 <span class="material-icons" style="font-size:11px">arrow_upward</span>{thread.upvotes}
@@ -169,7 +169,7 @@
         <button class="tool-btn" onclick={() => upvoteThread(forumStore.currentThread!.id)}>
           <span class="material-icons" style="font-size:14px">thumb_up</span> Upvote ({forumStore.currentThread.upvotes})
         </button>
-        {#if forumStore.currentThread.author_name === authStore.username}
+        {#if forumStore.currentThread.author === authStore.username}
           <button class="tool-btn danger" onclick={() => deleteThread(forumStore.currentThread!.id)}>
             <span class="material-icons" style="font-size:14px">delete</span> Delete
           </button>
@@ -188,7 +188,7 @@
             </span>
             <h2 class="detail-title">{forumStore.currentThread.title}</h2>
             <div class="detail-meta">
-              <span class="thread-author">{forumStore.currentThread.author_name}</span>
+              <span class="thread-author">{forumStore.currentThread.author}{#if forumStore.currentThread.author_faction_tag} <span class="faction-tag">[{forumStore.currentThread.author_faction_tag}]</span>{/if}</span>
               <span class="thread-date">{formatDate(forumStore.currentThread.created_at)}</span>
             </div>
           </div>
@@ -202,13 +202,13 @@
         {#each forumStore.currentReplies as reply (reply.id)}
           <div class="reply-item">
             <div class="reply-header">
-              <span class="reply-author">{reply.author_name}</span>
+              <span class="reply-author">{reply.author}{#if reply.author_faction_tag} <span class="faction-tag">[{reply.author_faction_tag}]</span>{/if}</span>
               <span class="reply-date">{formatDate(reply.created_at)}</span>
               <div class="reply-actions">
                 <button class="mini-btn" onclick={() => upvoteReply(forumStore.currentThread!.id, reply.id)}>
                   <span class="material-icons" style="font-size:12px">thumb_up</span> {reply.upvotes}
                 </button>
-                {#if reply.author_name === authStore.username}
+                {#if reply.author === authStore.username}
                   <button class="mini-btn danger" onclick={() => deleteReply(reply.id)}>
                     <span class="material-icons" style="font-size:12px">delete</span>
                   </button>
@@ -418,6 +418,7 @@
 
   .thread-author { color: #4fc3f7; }
   .thread-date { color: #37474f; font-family: 'Roboto Mono', monospace; }
+  .faction-tag { color: #b39ddb; font-size: 0.58rem; font-weight: 600; }
 
   .thread-stats {
     display: inline-flex;
