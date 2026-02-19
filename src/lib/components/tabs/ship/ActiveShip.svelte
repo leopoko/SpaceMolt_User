@@ -30,6 +30,35 @@
   function installModule(itemId: string, itemName: string) {
     actionQueueStore.enqueue(`Install ${itemName}`, () => ws.installMod(itemId));
   }
+
+  // Jettison state
+  let jettisonItemId = $state<string | null>(null);
+  let jettisonQty = $state(1);
+
+  function getItemDisplayName(item: { item_id: string; name?: string }): string {
+    if (item.name) return item.name;
+    const memo = marketMemoStore.getItemPrice(item.item_id);
+    if (memo) return memo.item_name;
+    return item.item_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function toggleJettison(item: { item_id: string; quantity: number }) {
+    if (jettisonItemId === item.item_id) {
+      jettisonItemId = null;
+    } else {
+      jettisonItemId = item.item_id;
+      jettisonQty = item.quantity;
+    }
+  }
+
+  function doJettison(item: { item_id: string; name?: string; quantity: number }) {
+    const qty = Math.max(1, Math.min(jettisonQty, item.quantity));
+    const name = getItemDisplayName(item);
+    actionQueueStore.enqueue(`Jettison ${qty}x ${name}`, () => ws.jettison(item.item_id, qty), {
+      command: { type: 'jettison', params: { item_id: item.item_id, quantity: qty } }
+    });
+    jettisonItemId = null;
+  }
 </script>
 
 <div class="two-col">
@@ -163,6 +192,7 @@
               <th class="num">Buy</th>
               <th class="num">Sell</th>
               <th class="num">Value</th>
+              <th class="num act-col"></th>
             </tr>
           </thead>
           <tbody>
@@ -202,7 +232,35 @@
                     —
                   {/if}
                 </td>
+                <td class="num act-col">
+                  <button class="jettison-btn" title="Jettison" onclick={() => toggleJettison(item)}>
+                    <span class="material-icons" style="font-size:14px">delete_outline</span>
+                  </button>
+                </td>
               </tr>
+              {#if jettisonItemId === item.item_id}
+                <tr class="jettison-row">
+                  <td colspan="7">
+                    <div class="jettison-controls">
+                      <span class="jettison-label">Jettison {getItemDisplayName(item)}:</span>
+                      <input
+                        type="number"
+                        class="jettison-input"
+                        min="1"
+                        max={item.quantity}
+                        bind:value={jettisonQty}
+                      />
+                      <span class="jettison-max">/ {item.quantity}</span>
+                      <button class="jettison-confirm" onclick={() => doJettison(item)}>
+                        Jettison
+                      </button>
+                      <button class="jettison-cancel" onclick={() => { jettisonItemId = null; }}>
+                        <span class="material-icons" style="font-size:14px">close</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
@@ -429,6 +487,81 @@
   .credits { color: #ffd700; }
   .buy-price { color: #66bb6a; }
   .sell-price { color: #ff9800; }
+
+  .act-col { width: 28px; padding: 2px !important; }
+
+  .jettison-btn {
+    background: none;
+    border: none;
+    color: #546e7a;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .jettison-btn:hover { color: #f44336; background: rgba(244,67,54,0.1); }
+
+  .jettison-row td {
+    padding: 4px 4px !important;
+    border-bottom: 1px solid rgba(244,67,54,0.15) !important;
+  }
+
+  .jettison-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+  }
+
+  .jettison-label {
+    color: #f44336;
+    white-space: nowrap;
+  }
+
+  .jettison-input {
+    width: 56px;
+    padding: 2px 4px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(244,67,54,0.3);
+    border-radius: 3px;
+    color: #b0bec5;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+  .jettison-input:focus { outline: none; border-color: rgba(244,67,54,0.6); }
+
+  .jettison-max {
+    font-size: 0.65rem;
+    color: #546e7a;
+    font-family: 'Roboto Mono', monospace;
+  }
+
+  .jettison-confirm {
+    background: rgba(244,67,54,0.15);
+    border: 1px solid rgba(244,67,54,0.4);
+    color: #f44336;
+    font-size: 0.68rem;
+    font-family: inherit;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .jettison-confirm:hover { background: rgba(244,67,54,0.25); }
+
+  .jettison-cancel {
+    background: none;
+    border: none;
+    color: #546e7a;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+  }
+  .jettison-cancel:hover { color: #90a4ae; }
 
   .empty-hint {
     font-size: 0.75rem;

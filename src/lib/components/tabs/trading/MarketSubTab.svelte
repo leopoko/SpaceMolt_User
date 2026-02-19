@@ -3,6 +3,7 @@
   import Card, { Content } from '@smui/card';
   import { marketStore } from '$lib/stores/market.svelte';
   import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+  import { bookmarkStore } from '$lib/stores/bookmark.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { shipStore } from '$lib/stores/ship.svelte';
   import { baseStore } from '$lib/stores/base.svelte';
@@ -49,17 +50,19 @@
     return ids;
   });
 
-  // Sorted market items: owned items first, then rest
+  // Sorted market items: bookmarked first, then owned, then rest
   let sortedMarketItems = $derived.by(() => {
     const items = marketStore.items;
     if (!items.length) return items;
-    const owned: MarketItem[] = [];
-    const rest: MarketItem[] = [];
-    for (const item of items) {
-      if (ownedItemIds.has(item.item_id)) owned.push(item);
-      else rest.push(item);
-    }
-    return [...owned, ...rest];
+    const bm = bookmarkStore.ids;
+    return [...items].sort((a, b) => {
+      const aBm = bm.has(a.item_id) ? 0 : 1;
+      const bBm = bm.has(b.item_id) ? 0 : 1;
+      if (aBm !== bBm) return aBm - bBm;
+      const aOwn = ownedItemIds.has(a.item_id) ? 0 : 1;
+      const bOwn = ownedItemIds.has(b.item_id) ? 0 : 1;
+      return aOwn - bOwn;
+    });
   });
 
   // Build suggestion list from cargo + storage + market items + memo items
@@ -228,38 +231,6 @@
   }
 
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
-
-  // --- Memo browsing ---
-  let selectedMemoStation = $state('');
-  let viewingMemo = $derived.by(() => {
-    if (!selectedMemoStation) return null;
-    return marketMemoStore.getMemo(selectedMemoStation);
-  });
-  let memoItems = $derived(viewingMemo?.items ?? []);
-
-  // Memos from other stations (excluding current docked station)
-  let otherMemos = $derived.by(() => {
-    const currentBase = marketStore.baseName;
-    return marketMemoStore.allMemos.filter(m => m.base !== currentBase);
-  });
-
-  // Reset selection if the selected station is no longer in the other memos list
-  $effect(() => {
-    if (selectedMemoStation && playerStore.isDocked && otherMemos.length > 0) {
-      if (!otherMemos.some(m => m.base === selectedMemoStation)) {
-        selectedMemoStation = '';
-      }
-    }
-  });
-
-  // Expand state for memo items
-  let expandedMemoItems = $state<Set<string>>(new Set());
-  function toggleMemoExpand(itemId: string) {
-    const next = new Set(expandedMemoItems);
-    if (next.has(itemId)) next.delete(itemId);
-    else next.add(itemId);
-    expandedMemoItems = next;
-  }
 </script>
 
 <div class="trading-layout">
@@ -309,6 +280,7 @@
               <thead>
                 <tr>
                   <th style="width:24px"></th>
+                  <th style="width:24px"></th>
                   <th>Item</th>
                   <th class="num">Best Buy</th>
                   <th class="num">Best Sell</th>
@@ -318,11 +290,17 @@
               <tbody>
                 {#each sortedMarketItems as item (item.item_id)}
                   {@const isOwned = ownedItemIds.has(item.item_id)}
-                  <tr class="item-row" class:expanded={expandedItems.has(item.item_id)} class:owned-row={isOwned} onclick={() => toggleExpand(item.item_id)}>
+                  {@const isBookmarked = bookmarkStore.has(item.item_id)}
+                  <tr class="item-row" class:expanded={expandedItems.has(item.item_id)} class:owned-row={isOwned} class:bookmarked-row={isBookmarked} onclick={() => toggleExpand(item.item_id)}>
                     <td class="expand-icon">
                       <span class="material-icons" style="font-size:14px">
                         {expandedItems.has(item.item_id) ? 'expand_more' : 'chevron_right'}
                       </span>
+                    </td>
+                    <td class="bm-cell">
+                      <button class="bm-btn" class:active={isBookmarked} onclick={(e) => { e.stopPropagation(); bookmarkStore.toggle(item.item_id); }} title={isBookmarked ? 'Remove bookmark' : 'Bookmark this item'}>
+                        <span class="material-icons" style="font-size:14px">{isBookmarked ? 'bookmark' : 'bookmark_border'}</span>
+                      </button>
                     </td>
                     <td class="item-name">
                       {item.item_name}
@@ -335,7 +313,7 @@
 
                   {#if expandedItems.has(item.item_id)}
                     <tr class="detail-row">
-                      <td colspan="5">
+                      <td colspan="6">
                         <div class="detail-grid">
                           <div class="detail-section">
                             <p class="detail-title buy-label">Wanted (Sell to)</p>
@@ -592,227 +570,9 @@
         {/if}
       </div>
 
-      <!-- Memo browser for other stations (while docked) -->
-      {#if otherMemos.length > 0}
-        <Card class="space-card">
-          <Content>
-            <p class="tab-section-title">Other Station Memos</p>
-            <div class="memo-selector">
-              <select class="text-input" bind:value={selectedMemoStation}>
-                <option value="">-- Select Station --</option>
-                {#each otherMemos as memo}
-                  <option value={memo.base}>{memo.base} ({new Date(memo.savedAt).toLocaleDateString()})</option>
-                {/each}
-              </select>
-              {#if selectedMemoStation}
-                <button class="action-btn cancel-btn" onclick={() => { marketMemoStore.removeMemo(selectedMemoStation); selectedMemoStation = ''; }} title="Delete this memo">
-                  <span class="material-icons" style="font-size:12px">delete</span>
-                </button>
-              {/if}
-            </div>
-
-            {#if viewingMemo}
-              <p class="memo-info">
-                <span class="station-label mono">{viewingMemo.base}</span>
-                <span class="memo-saved-hint">Saved {new Date(viewingMemo.savedAt).toLocaleString()}</span>
-              </p>
-              {#if memoItems.length > 0}
-                <table class="market-table">
-                  <thead>
-                    <tr>
-                      <th style="width:24px"></th>
-                      <th>Item</th>
-                      <th class="num">Best Buy</th>
-                      <th class="num">Best Sell</th>
-                      <th class="num">Spread</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each memoItems as item (item.item_id)}
-                      {@const isOwned = ownedItemIds.has(item.item_id)}
-                      <tr class="item-row" class:expanded={expandedMemoItems.has(item.item_id)} class:owned-row={isOwned} onclick={() => toggleMemoExpand(item.item_id)}>
-                        <td class="expand-icon">
-                          <span class="material-icons" style="font-size:14px">
-                            {expandedMemoItems.has(item.item_id) ? 'expand_more' : 'chevron_right'}
-                          </span>
-                        </td>
-                        <td class="item-name">
-                          {item.item_name}
-                          {#if isOwned}<span class="owned-badge">OWNED</span>{/if}
-                        </td>
-                        <td class="num mono buy-price">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
-                        <td class="num mono sell-price">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
-                        <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
-                      </tr>
-
-                      {#if expandedMemoItems.has(item.item_id)}
-                        <tr class="detail-row">
-                          <td colspan="5">
-                            <div class="detail-grid">
-                              <div class="detail-section">
-                                <p class="detail-title buy-label">Wanted (Sell to)</p>
-                                {#if item.buy_orders.length > 0}
-                                  <table class="detail-table">
-                                    <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
-                                    <tbody>
-                                      {#each item.buy_orders as order}
-                                        <tr>
-                                          <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
-                                          <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                        </tr>
-                                      {/each}
-                                    </tbody>
-                                  </table>
-                                {:else}
-                                  <p class="detail-empty">No buy orders</p>
-                                {/if}
-                              </div>
-                              <div class="detail-section">
-                                <p class="detail-title sell-label">For Sale (Buy from)</p>
-                                {#if item.sell_orders.length > 0}
-                                  <table class="detail-table">
-                                    <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
-                                    <tbody>
-                                      {#each item.sell_orders as order}
-                                        <tr>
-                                          <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
-                                          <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                        </tr>
-                                      {/each}
-                                    </tbody>
-                                  </table>
-                                {:else}
-                                  <p class="detail-empty">No sell orders</p>
-                                {/if}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      {/if}
-                    {/each}
-                  </tbody>
-                </table>
-              {:else}
-                <p class="empty-hint">No items in this memo.</p>
-              {/if}
-            {/if}
-          </Content>
-        </Card>
-      {/if}
     {/if}
   {:else}
-    <!-- UNDOCKED: Show memo browser + cargo -->
-    <Card class="space-card">
-      <Content>
-        <p class="tab-section-title">Market Memos</p>
-        <p class="hint-text">You are not docked. Browse saved market memos below.</p>
-        {#if marketMemoStore.allMemos.length > 0}
-          <div class="memo-selector">
-            <select class="text-input" bind:value={selectedMemoStation}>
-              <option value="">-- Select Station --</option>
-              {#each marketMemoStore.allMemos as memo}
-                <option value={memo.base}>{memo.base} ({new Date(memo.savedAt).toLocaleDateString()})</option>
-              {/each}
-            </select>
-            {#if selectedMemoStation}
-              <button class="action-btn cancel-btn" onclick={() => marketMemoStore.removeMemo(selectedMemoStation)} title="Delete this memo">
-                <span class="material-icons" style="font-size:12px">delete</span>
-              </button>
-            {/if}
-          </div>
-
-          {#if viewingMemo}
-            <p class="memo-info">
-              <span class="station-label mono">{viewingMemo.base}</span>
-              <span class="memo-saved-hint">Saved {new Date(viewingMemo.savedAt).toLocaleString()}</span>
-            </p>
-            {#if memoItems.length > 0}
-              <table class="market-table">
-                <thead>
-                  <tr>
-                    <th style="width:24px"></th>
-                    <th>Item</th>
-                    <th class="num">Best Buy</th>
-                    <th class="num">Best Sell</th>
-                    <th class="num">Spread</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each memoItems as item (item.item_id)}
-                    {@const isOwned = ownedItemIds.has(item.item_id)}
-                    <tr class="item-row" class:expanded={expandedMemoItems.has(item.item_id)} class:owned-row={isOwned} onclick={() => toggleMemoExpand(item.item_id)}>
-                      <td class="expand-icon">
-                        <span class="material-icons" style="font-size:14px">
-                          {expandedMemoItems.has(item.item_id) ? 'expand_more' : 'chevron_right'}
-                        </span>
-                      </td>
-                      <td class="item-name">
-                        {item.item_name}
-                        {#if isOwned}<span class="owned-badge">OWNED</span>{/if}
-                      </td>
-                      <td class="num mono buy-price">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
-                      <td class="num mono sell-price">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
-                      <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
-                    </tr>
-
-                    {#if expandedMemoItems.has(item.item_id)}
-                      <tr class="detail-row">
-                        <td colspan="5">
-                          <div class="detail-grid">
-                            <div class="detail-section">
-                              <p class="detail-title buy-label">Wanted (Sell to)</p>
-                              {#if item.buy_orders.length > 0}
-                                <table class="detail-table">
-                                  <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
-                                  <tbody>
-                                    {#each item.buy_orders as order}
-                                      <tr>
-                                        <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
-                                        <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                      </tr>
-                                    {/each}
-                                  </tbody>
-                                </table>
-                              {:else}
-                                <p class="detail-empty">No buy orders</p>
-                              {/if}
-                            </div>
-                            <div class="detail-section">
-                              <p class="detail-title sell-label">For Sale (Buy from)</p>
-                              {#if item.sell_orders.length > 0}
-                                <table class="detail-table">
-                                  <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
-                                  <tbody>
-                                    {#each item.sell_orders as order}
-                                      <tr>
-                                        <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
-                                        <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                      </tr>
-                                    {/each}
-                                  </tbody>
-                                </table>
-                              {:else}
-                                <p class="detail-empty">No sell orders</p>
-                              {/if}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    {/if}
-                  {/each}
-                </tbody>
-              </table>
-            {:else}
-              <p class="empty-hint">No items in this memo.</p>
-            {/if}
-          {/if}
-        {:else}
-          <p class="empty-hint">No saved memos. Dock at a station and press Memo to save market data.</p>
-        {/if}
-      </Content>
-    </Card>
-
-    <!-- Cargo with memo prices (always visible when undocked) -->
+    <!-- UNDOCKED: Show cargo with memo prices -->
     {#if shipStore.cargo.length > 0}
       <Card class="space-card">
         <Content>
@@ -847,6 +607,12 @@
               {/each}
             </tbody>
           </table>
+        </Content>
+      </Card>
+    {:else}
+      <Card class="space-card">
+        <Content>
+          <p class="empty-hint">Not docked. Use the Memo tab to browse saved market data.</p>
         </Content>
       </Card>
     {/if}
@@ -919,26 +685,6 @@
   .memo-saved-hint {
     font-size: 0.62rem;
     color: #546e7a;
-  }
-
-  .hint-text {
-    font-size: 0.72rem;
-    color: #78909c;
-    margin-bottom: 8px;
-  }
-
-  .memo-selector {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .memo-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
   }
 
   .empty-hint {
@@ -1238,5 +984,23 @@
     color: #546e7a;
     margin-left: 8px;
     white-space: nowrap;
+  }
+
+  /* Bookmark */
+  .bm-cell { padding: 0 2px; }
+  .bm-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    color: #37474f;
+    transition: color 0.15s;
+  }
+  .bm-btn:hover { color: #4fc3f7; }
+  .bm-btn.active { color: #4fc3f7; }
+
+  .bookmarked-row {
+    border-left: 2px solid rgba(79,195,247,0.4);
   }
 </style>
