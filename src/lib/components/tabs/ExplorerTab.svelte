@@ -630,6 +630,7 @@
         {@const sc = poiVisualScale}
         {@const sw = sc * 0.6}
         {@const ls = labelScale}
+        {@const zs = viewW * 0.001}
         {@const mappedPois = sys.memo.pois.filter(p => p.position)}
         {@const orbits = computeOrbits(mappedPois, poiScale)}
 
@@ -645,8 +646,8 @@
               cx={sysX} cy={sysY} r={r}
               fill="none"
               stroke="rgba(79,195,247,0.08)"
-              stroke-width={sw * 0.3}
-              stroke-dasharray="{sc * 0.4} {sc * 0.3}"
+              stroke-width={zs * 1.5}
+              stroke-dasharray="{zs * 4} {zs * 3}"
             />
           {/each}
         {/if}
@@ -732,11 +733,11 @@
           {#if viewW < 500}
             <text
               x={pos.x}
-              y={pos.y + dotRadius(poi.type, sc) + sc * 0.8}
+              y={pos.y + dotRadius(poi.type, sc) + ls * 0.6}
               text-anchor="middle"
               dominant-baseline="hanging"
               fill="#78909c"
-              font-size={sc * 1.5}
+              font-size={ls * 1.2}
               font-family="'Roboto', sans-serif"
               style="pointer-events:none"
             >{poi.name}</text>
