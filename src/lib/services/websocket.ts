@@ -974,7 +974,7 @@ class WebSocketService {
 
   jump(systemId: string, systemName?: string) {
     systemStore.setTravel({ in_progress: true, destination_id: systemId, destination_name: systemName ?? systemId, type: 'jump' });
-    this.send({ type: 'jump', payload: { system: systemId } });
+    this.send({ type: 'jump', payload: { target_system: systemId } });
   }
 
   dock(stationId: string) { this.send({ type: 'dock', payload: { station: stationId } }); }
