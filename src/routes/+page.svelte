@@ -72,6 +72,18 @@
   }
 
   let gridColumns = $derived(`${eventLogPct}fr 4px ${100 - eventLogPct}fr 220px`);
+
+  // ---- Tab bar horizontal scroll with mouse wheel ----
+  let tabBarWrapperEl: HTMLDivElement | undefined = $state(undefined);
+
+  function onTabBarWheel(e: WheelEvent) {
+    if (!tabBarWrapperEl) return;
+    // Find the inner scrollable element
+    const scrollEl = tabBarWrapperEl.querySelector('.mdc-tab-scroller__scroll-area') as HTMLElement
+      ?? tabBarWrapperEl;
+    e.preventDefault();
+    scrollEl.scrollLeft += e.deltaY;
+  }
 </script>
 
 {#if !authStore.isLoggedIn}
@@ -80,14 +92,21 @@
   <div class="app-shell">
     <StatusBar />
 
-    <TabBar tabs={TABS} bind:active={uiStore.activeTab}>
-      {#snippet tab(t)}
-        <Tab tab={t}>
-          <Icon class="material-icons">{t.icon}</Icon>
-          <Label>{t.label}</Label>
-        </Tab>
-      {/snippet}
-    </TabBar>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="tab-bar-wrapper"
+      bind:this={tabBarWrapperEl}
+      onwheel={onTabBarWheel}
+    >
+      <TabBar tabs={TABS} bind:active={uiStore.activeTab}>
+        {#snippet tab(t)}
+          <Tab tab={t}>
+            <Icon class="material-icons">{t.icon}</Icon>
+            <Label>{t.label}</Label>
+          </Tab>
+        {/snippet}
+      </TabBar>
+    </div>
 
     <main class="tab-content">
       {#if uiStore.activeTab?.label === 'Navigation'}

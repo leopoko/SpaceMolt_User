@@ -19,6 +19,7 @@ import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 import { catalogStore } from '$lib/stores/catalog.svelte';
+import { contactsStore } from '$lib/stores/contacts.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -502,6 +503,15 @@ class WebSocketService {
         // Also show in EventLog
         const chLabel = normalized.channel.toUpperCase();
         eventsStore.add({ type: 'chat', message: `[${chLabel}] ${normalized.sender_name}: ${normalized.message}` });
+        // Save private messages to contacts
+        if (normalized.channel === 'private') {
+          // Determine the conversation partner
+          const myUsername = authStore.username;
+          const partner = normalized.sender_name === myUsername
+            ? (normalized.target_id ?? 'Unknown')
+            : normalized.sender_name;
+          contactsStore.addMessage(normalized, partner);
+        }
         break;
       }
 
@@ -760,10 +770,21 @@ class WebSocketService {
 
   // ---- Chat ----
 
-  sendChat(message: string, channel = 'global', target?: string) {
-    const payload: Record<string, unknown> = { message, channel };
+  sendChat(content: string, channel = 'global', target?: string) {
+    const payload: Record<string, unknown> = { content, channel };
     if (channel === 'private' && target) {
-      payload.target = target;
+      payload.target_id = target;
+      // Save sent PM to contacts
+      const sentMsg: ChatMessage = {
+        id: `sent_${Date.now()}`,
+        sender_id: '',
+        sender_name: authStore.username,
+        message: content,
+        timestamp: Date.now(),
+        channel: 'private',
+        target_id: target,
+      };
+      contactsStore.addMessage(sentMsg, target);
     }
     this.send({ type: 'chat', payload });
   }
