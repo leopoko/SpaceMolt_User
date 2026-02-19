@@ -552,7 +552,7 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string; factions?: unknown[]; invites?: unknown[]; faction_id?: string; faction?: Record<string, unknown> }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; total_count?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string; factions?: unknown[]; invites?: unknown[]; faction_id?: string; faction?: Record<string, unknown> }>(msg);
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -614,8 +614,8 @@ class WebSocketService {
           break;
         }
         // Faction responses
-        if (pl.action === 'faction_list' && pl.factions) {
-          factionStore.setFactionList(pl.factions as FactionListItem[], pl.total ?? 0);
+        if ((pl.action === 'faction_list' || (!pl.action && pl.factions && Array.isArray(pl.factions))) && pl.factions) {
+          factionStore.setFactionList(pl.factions as FactionListItem[], pl.total_count ?? pl.total ?? 0);
           break;
         }
         if (pl.action === 'faction_get_invites' && pl.invites) {
@@ -770,8 +770,8 @@ class WebSocketService {
       }
 
       case 'faction_list': {
-        const pl = p<{ factions: FactionListItem[]; total?: number }>(msg);
-        factionStore.setFactionList(pl.factions ?? [], pl.total);
+        const pl = p<{ factions: FactionListItem[]; total?: number; total_count?: number }>(msg);
+        factionStore.setFactionList(pl.factions ?? [], pl.total_count ?? pl.total);
         break;
       }
 

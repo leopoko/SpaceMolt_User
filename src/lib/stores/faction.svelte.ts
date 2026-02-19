@@ -6,7 +6,9 @@ export interface FactionListItem {
   tag: string;
   description?: string;
   leader_name?: string;
+  leader_username?: string;
   member_count?: number;
+  owned_bases?: number;
   standing?: number;
   primary_color?: string;
   secondary_color?: string;

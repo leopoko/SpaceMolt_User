@@ -22,7 +22,8 @@
     return factionStore.factionList.filter(f =>
       f.name.toLowerCase().includes(q) ||
       f.tag.toLowerCase().includes(q) ||
-      (f.description ?? '').toLowerCase().includes(q)
+      (f.description ?? '').toLowerCase().includes(q) ||
+      (f.leader_username ?? f.leader_name ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -256,9 +257,9 @@
               <p class="fc-desc">{faction.description}</p>
             {/if}
             <div class="fc-meta">
-              {#if faction.leader_name}
+              {#if faction.leader_username || faction.leader_name}
                 <span class="fc-leader">
-                  <span class="material-icons" style="font-size:11px">person</span> {faction.leader_name}
+                  <span class="material-icons" style="font-size:11px">person</span> {faction.leader_username ?? faction.leader_name}
                 </span>
               {/if}
               {#if faction.member_count !== undefined}
