@@ -421,6 +421,19 @@ export interface ScanResult {
   anomalies: string[];
 }
 
+export interface TargetScanResult {
+  target_id: string;
+  success: boolean;
+  revealed_info: string[] | null;
+  tick?: number;
+  username?: string;
+  ship_class?: string;
+  cloaked?: boolean;
+  hull?: number;
+  shield?: number;
+  faction_id?: string;
+}
+
 export interface Drone {
   id: string;
   owner_id: string;

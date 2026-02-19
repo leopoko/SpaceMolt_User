@@ -1,6 +1,6 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
-  CombatEvent, ScanResult, MarketData, StorageData,
+  CombatEvent, ScanResult, TargetScanResult, MarketData, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
@@ -336,9 +336,15 @@ class WebSocketService {
       }
 
       case 'scan_result': {
-        const pl = p<ScanResult>(msg);
-        combatStore.setScanResult(pl);
-        eventsStore.add({ type: 'nav', message: `Scan complete: ${pl.targets?.length ?? 0} targets detected` });
+        const pl = p<ScanResult & TargetScanResult>(msg);
+        // Targeted scan (has target_id) vs area scan (has targets array)
+        if (pl.target_id) {
+          combatStore.setTargetScan(pl as TargetScanResult);
+          eventsStore.add({ type: 'combat', message: `Scan complete: ${pl.username ?? pl.target_id}` });
+        } else {
+          combatStore.setScanResult(pl as ScanResult);
+          eventsStore.add({ type: 'nav', message: `Scan complete: ${pl.targets?.length ?? 0} targets detected` });
+        }
         break;
       }
 
@@ -439,6 +445,36 @@ class WebSocketService {
       case 'police_warning': {
         const pl = p<{ message?: string }>(msg);
         eventsStore.add({ type: 'combat', message: `Police warning: ${pl.message ?? ''}` });
+        break;
+      }
+
+      case 'action_result': {
+        const pl = p<{ command?: string; tick?: number; result?: Record<string, unknown> }>(msg);
+        if (pl.command === 'scan' && pl.result) {
+          const scanResult: TargetScanResult = {
+            target_id: (pl.result.target_id as string) ?? '',
+            success: (pl.result.success as boolean) ?? false,
+            revealed_info: (pl.result.revealed_info as string[] | null) ?? null,
+            tick: pl.tick,
+            username: pl.result.username as string | undefined,
+            ship_class: pl.result.ship_class as string | undefined,
+            cloaked: pl.result.cloaked as boolean | undefined,
+            hull: pl.result.hull as number | undefined,
+            shield: pl.result.shield as number | undefined,
+            faction_id: pl.result.faction_id as string | undefined,
+          };
+          combatStore.setTargetScan(scanResult);
+          if (scanResult.success) {
+            eventsStore.add({ type: 'combat', message: `Scan complete: ${scanResult.username ?? scanResult.target_id}` });
+          } else {
+            eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
+          }
+        } else {
+          if (pl.result) {
+            const resultMsg = (pl.result.message as string) ?? `${pl.command ?? 'Action'} complete`;
+            eventsStore.add({ type: 'info', message: resultMsg });
+          }
+        }
         break;
       }
 
@@ -559,7 +595,13 @@ class WebSocketService {
     this.send({ type: 'attack', payload: { target: targetId } });
   }
 
-  scan() { this.send({ type: 'scan' }); }
+  scan(targetId?: string) {
+    if (targetId) {
+      this.send({ type: 'scan', payload: { target_id: targetId } });
+    } else {
+      this.send({ type: 'scan' });
+    }
+  }
 
   // ---- Mining ----
 
