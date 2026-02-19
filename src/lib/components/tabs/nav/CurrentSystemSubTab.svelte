@@ -125,7 +125,8 @@
 
   function doJump(systemId: string, systemName: string) {
     actionQueueStore.enqueue(`Jump → ${systemName}`, () => ws.jump(systemId, systemName), {
-      command: { type: 'jump', params: { systemId, systemName } }
+      command: { type: 'jump', params: { systemId, systemName } },
+      persistent: true
     });
   }
 

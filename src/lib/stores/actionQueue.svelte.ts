@@ -25,6 +25,8 @@ export interface ActionCommand {
 export interface EnqueueOptions {
   continueOnError?: boolean;
   command?: ActionCommand;
+  /** When true, the action occupies the queue until explicitly completed (e.g., multi-tick jump). */
+  persistent?: boolean;
 }
 
 class ActionQueueStore {
@@ -35,6 +37,8 @@ class ActionQueueStore {
   currentContinueOnError = $state(false);
   /** When true, actions are queued but not executed (for loop recording). */
   recordingMode = $state(false);
+  /** When true, a persistent action (e.g., multi-tick jump) is blocking the queue. */
+  holding = $state(false);
   /** Tracks the last tick number for which we executed an action (avoids double-fire). */
   private lastExecutedTick = -1;
   /** Plain Map – NOT in $state – so function refs stay unproxied. */
@@ -43,16 +47,19 @@ class ActionQueueStore {
   private commands = new Map<number, ActionCommand>();
   /** continueOnError flags per action. */
   private errorFlags = new Map<number, boolean>();
+  /** persistent flags per action. */
+  private persistentFlags = new Map<number, boolean>();
 
   enqueue(label: string, execute: () => void, opts?: EnqueueOptions) {
     const id = ++_nextId;
     this.executors.set(id, execute);
     if (opts?.command) this.commands.set(id, opts.command);
     if (opts?.continueOnError) this.errorFlags.set(id, true);
+    if (opts?.persistent) this.persistentFlags.set(id, true);
     this.items = [...this.items, { id, label }];
     eventsStore.add({ type: 'info', message: `[Queue] 追加: ${label} (${this.items.length}件)` });
     // If no action is currently executing and not in recording mode, run immediately
-    if (!this.currentAction && !this.recordingMode) {
+    if (!this.currentAction && !this.holding && !this.recordingMode) {
       this.executeNext();
     }
   }
@@ -63,9 +70,10 @@ class ActionQueueStore {
     this.executors.set(id, execute);
     if (opts?.command) this.commands.set(id, opts.command);
     if (opts?.continueOnError) this.errorFlags.set(id, true);
+    if (opts?.persistent) this.persistentFlags.set(id, true);
     this.items = [{ id, label }, ...this.items];
     // If no action is currently executing and not in recording mode, run immediately
-    if (!this.currentAction && !this.recordingMode) {
+    if (!this.currentAction && !this.holding && !this.recordingMode) {
       this.executeNext();
     }
   }
@@ -86,6 +94,7 @@ class ActionQueueStore {
     this.executors.delete(id);
     this.commands.delete(id);
     this.errorFlags.delete(id);
+    this.persistentFlags.delete(id);
     this.items = this.items.filter(a => a.id !== id);
   }
 
@@ -115,6 +124,7 @@ class ActionQueueStore {
   executeNext(tick = -1) {
     if (this.items.length === 0) return;
     if (this.recordingMode) return; // Don't execute in recording mode
+    if (this.holding) return; // Blocked by persistent action (e.g., multi-tick jump)
     if (tick >= 0 && tick === this.lastExecutedTick) return; // already ran this tick
     this.lastExecutedTick = tick;
     const [first, ...rest] = this.items;
@@ -124,31 +134,64 @@ class ActionQueueStore {
     this.commands.delete(first.id);
     const contOnErr = this.errorFlags.get(first.id) ?? false;
     this.errorFlags.delete(first.id);
+    const isPersistent = this.persistentFlags.get(first.id) ?? false;
+    this.persistentFlags.delete(first.id);
     this.currentAction = first.label;
     this.currentContinueOnError = contOnErr;
+    if (isPersistent) {
+      this.holding = true;
+    }
     eventsStore.add({ type: 'info', message: `[Queue] 実行: ${first.label}` });
     try {
       execute?.();
     } catch (e) {
       console.error('[ActionQueue] execute failed:', e);
       eventsStore.add({ type: 'error', message: `[Queue] エラー: ${first.label}` });
-    }
-    // Clear current action after a short delay to allow UI to show it
-    setTimeout(() => {
-      if (this.currentAction === first.label) {
-        this.currentAction = null;
-        this.currentContinueOnError = false;
+      // Release hold on error during execution
+      if (isPersistent) {
+        this.holding = false;
       }
-    }, 8000);
+    }
+    // For persistent actions, don't auto-clear – wait for completeCurrentAction()
+    if (!isPersistent) {
+      // Clear current action after a short delay to allow UI to show it
+      setTimeout(() => {
+        if (this.currentAction === first.label) {
+          this.currentAction = null;
+          this.currentContinueOnError = false;
+        }
+      }, 8000);
+    }
+  }
+
+  /**
+   * Complete a persistent action (e.g., multi-tick jump finished).
+   * Clears the hold and currentAction, allowing the queue to advance on the next tick.
+   */
+  completeCurrentAction() {
+    this.holding = false;
+    this.currentAction = null;
+    this.currentContinueOnError = false;
+  }
+
+  /**
+   * Update the label of the current action (e.g., to show ETA during jump).
+   */
+  updateCurrentLabel(label: string) {
+    if (this.currentAction) {
+      this.currentAction = label;
+    }
   }
 
   clear() {
     this.executors.clear();
     this.commands.clear();
     this.errorFlags.clear();
+    this.persistentFlags.clear();
     this.items = [];
     this.currentAction = null;
     this.currentContinueOnError = false;
+    this.holding = false;
   }
 
   /** Clear only queued items, keep current action running. */
@@ -157,6 +200,7 @@ class ActionQueueStore {
       this.executors.delete(item.id);
       this.commands.delete(item.id);
       this.errorFlags.delete(item.id);
+      this.persistentFlags.delete(item.id);
     }
     this.items = [];
   }

@@ -204,7 +204,7 @@ class WebSocketService {
         // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
         if (actionQueueStore.currentContinueOnError) {
           eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
-        } else if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+        } else if (actionQueueStore.currentAction || actionQueueStore.holding || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
         }
@@ -246,6 +246,16 @@ class WebSocketService {
         connectionStore.tick = pl.tick ?? connectionStore.tick + 1;
         connectionStore.lastTickTime = Date.now();
         systemStore.setTravel({ current_tick: connectionStore.tick });
+        // Update jump ETA label if a persistent jump is holding the queue
+        if (actionQueueStore.holding && systemStore.travel.type === 'jump' && systemStore.travel.arrival_tick != null) {
+          const destName = systemStore.travel.destination_name ?? '...';
+          const remaining = systemStore.travel.arrival_tick - connectionStore.tick;
+          if (remaining > 0) {
+            actionQueueStore.updateCurrentLabel(`Jump → ${destName} (ETA ${remaining} tick${remaining !== 1 ? 's' : ''})`);
+          } else {
+            actionQueueStore.updateCurrentLabel(`Jump → ${destName} (arriving...)`);
+          }
+        }
         actionQueueStore.executeNext(connectionStore.tick);
         break;
       }
@@ -283,6 +293,8 @@ class WebSocketService {
             const dest = (result.system_name as string) ?? (result.system as string) ?? '';
             systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
             eventsStore.add({ type: 'nav', message: `Jumped to ${dest}` });
+            // Release the persistent jump action from queue
+            actionQueueStore.completeCurrentAction();
             this.getSystem();
           }
         } else if (cmd === 'scan' && result) {
@@ -411,7 +423,7 @@ class WebSocketService {
         // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
         if (actionQueueStore.currentContinueOnError) {
           eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
-        } else if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+        } else if (actionQueueStore.currentAction || actionQueueStore.holding || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
         }
@@ -424,6 +436,10 @@ class WebSocketService {
         systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         const dest = pl.system_name ?? pl.destination ?? '';
         eventsStore.add({ type: 'nav', message: `Arrived at ${dest}` });
+        // Release the persistent jump action from queue (legacy message path)
+        if (msg.type === 'jumped') {
+          actionQueueStore.completeCurrentAction();
+        }
         this.getSystem();
         break;
       }
@@ -431,6 +447,14 @@ class WebSocketService {
       case 'travel_update': {
         const pl = p<{ arrival_tick?: number }>(msg);
         systemStore.setTravel({ in_progress: true, arrival_tick: pl.arrival_tick ?? null });
+        // Update jump action label with ETA if a persistent jump is holding the queue
+        if (actionQueueStore.holding && systemStore.travel.type === 'jump' && pl.arrival_tick != null) {
+          const destName = systemStore.travel.destination_name ?? '...';
+          const remaining = pl.arrival_tick - connectionStore.tick;
+          if (remaining > 0) {
+            actionQueueStore.updateCurrentLabel(`Jump → ${destName} (ETA ${remaining} tick${remaining !== 1 ? 's' : ''})`);
+          }
+        }
         break;
       }
 
@@ -987,6 +1011,8 @@ class WebSocketService {
             playerStore.update({ current_poi: poiId, poi_id: poiId } as never);
           }
           eventsStore.add({ type: 'nav', message: `Jumped to ${dest}${fromSystem ? ` (from ${fromSystem})` : ''}` });
+          // Release the persistent jump action from queue
+          actionQueueStore.completeCurrentAction();
           this.getSystem();
         } else if (!pl.action && (msg.payload as Record<string, unknown>)?.player && (msg.payload as Record<string, unknown>)?.ship) {
           // get_status response: has player + ship at top level, no action field

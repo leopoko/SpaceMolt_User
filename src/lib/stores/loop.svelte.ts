@@ -243,7 +243,7 @@ class LoopStore {
         return {
           label: step.label,
           execute: () => ws.jump(cmd.params!.systemId as string, cmd.params?.systemName as string | undefined),
-          opts,
+          opts: { ...opts, persistent: true },
         };
 
       case 'mine':
