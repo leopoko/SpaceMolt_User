@@ -66,28 +66,25 @@
                   <span class="stat-val mono">{skill.max_level}</span>
                 </div>
               {/if}
-              {#if skill.rank != null}
-                <div class="stat">
-                  <span class="stat-label">Rank</span>
-                  <span class="stat-val mono">{skill.rank}</span>
-                </div>
-              {/if}
             </div>
-            {#if skill.prerequisites && skill.prerequisites.length > 0}
+            {#if skill.required_skills && Object.keys(skill.required_skills).length > 0}
               <div class="prereqs">
                 <span class="prereq-label">Prerequisites:</span>
-                {#each skill.prerequisites as prereq}
-                  <span class="prereq-item">{prereq}</span>
+                {#each Object.entries(skill.required_skills) as [sid, lvl]}
+                  <span class="prereq-item">{sid.replace(/_/g, ' ')} Lv{lvl}</span>
                 {/each}
               </div>
             {/if}
-            {#if skill.effects && skill.effects.length > 0}
+            {#if skill.bonus_per_level && Object.keys(skill.bonus_per_level).length > 0}
               <div class="effects">
-                <span class="effect-label">Effects:</span>
-                {#each skill.effects as effect}
-                  <span class="effect-item">{effect}</span>
+                <span class="effect-label">Bonus/Level:</span>
+                {#each Object.entries(skill.bonus_per_level) as [key, val]}
+                  <span class="effect-item">{key}: +{val}</span>
                 {/each}
               </div>
+            {/if}
+            {#if skill.training_source}
+              <p class="training-source">{skill.training_source}</p>
             {/if}
           </Content>
         </Card>
@@ -182,6 +179,12 @@
     background: rgba(76,175,80,0.08);
     padding: 1px 5px;
     border-radius: 3px;
+  }
+  .training-source {
+    font-size: 0.65rem;
+    color: #37474f;
+    font-style: italic;
+    margin: 6px 0 0;
   }
   .mono { font-family: 'Roboto Mono', monospace; }
 </style>

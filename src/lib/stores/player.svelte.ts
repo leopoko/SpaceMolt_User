@@ -46,10 +46,45 @@ class PlayerStore {
 
   get status() { return this.data?.status ?? 'active'; }
 
+  /**
+   * Build a unified skill list from both formats:
+   * - Array format (legacy): Skill[] directly
+   * - Object format (state_update): { skill_id: level } combined with skill_xp { skill_id: xp }
+   *   Level-0 skills appear only in skill_xp, not in skills map.
+   */
   get skills(): Skill[] {
     const s = this.data?.skills;
-    if (!s || !Array.isArray(s)) return [];
-    return s as Skill[];
+    if (!s) return [];
+
+    // Legacy array format
+    if (Array.isArray(s)) return s as Skill[];
+
+    // Object format: Record<string, number> → merge with skill_xp
+    const skillLevels = s as Record<string, number>;
+    const skillXp = this.data?.skill_xp ?? {};
+
+    // Collect all skill IDs from both maps
+    const allIds = new Set([...Object.keys(skillLevels), ...Object.keys(skillXp)]);
+    const result: Skill[] = [];
+
+    for (const id of allIds) {
+      const level = skillLevels[id] ?? 0;
+      const xp = skillXp[id] ?? 0;
+      result.push({
+        id,
+        name: id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        description: '',
+        level,
+        max_level: 10,
+        xp,
+        next_level_xp: 0, // unknown from state_update; PlayerProfile handles this
+        prerequisites: [],
+      });
+    }
+
+    // Sort: highest level first, then by XP, then alphabetical
+    result.sort((a, b) => b.level - a.level || b.xp - a.xp || a.name.localeCompare(b.name));
+    return result;
   }
   get skillXp(): Record<string, number> { return this.data?.skill_xp ?? {}; }
   get experience(): number { return this.data?.experience ?? 0; }

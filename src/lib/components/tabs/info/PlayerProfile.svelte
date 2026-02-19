@@ -70,13 +70,17 @@
                 <span class="skill-name">{skill.name}</span>
                 <span class="skill-level mono">Lv {skill.level}/{skill.max_level}</span>
               </div>
-              {#if skill.xp !== undefined && skill.next_level_xp > 0}
+              {#if skill.xp !== undefined && skill.xp > 0}
                 <div class="xp-bar">
-                  <LinearProgress
-                    progress={skill.xp / skill.next_level_xp}
-                    style="height:3px; --mdc-theme-primary:#7c4dff;"
-                  />
-                  <span class="xp-text mono">{skill.xp}/{skill.next_level_xp} XP</span>
+                  {#if skill.next_level_xp > 0}
+                    <LinearProgress
+                      progress={skill.xp / skill.next_level_xp}
+                      style="height:3px; --mdc-theme-primary:#7c4dff;"
+                    />
+                    <span class="xp-text mono">{skill.xp}/{skill.next_level_xp} XP</span>
+                  {:else}
+                    <span class="xp-text mono">{skill.xp} XP</span>
+                  {/if}
                 </div>
               {/if}
               {#if skill.description}

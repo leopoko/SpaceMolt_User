@@ -60,22 +60,28 @@
               <p class="item-desc">{item.description}</p>
             {/if}
             <div class="stat-grid">
-              {#if item.volume != null}
+              {#if item.size != null}
                 <div class="stat">
-                  <span class="stat-label">Volume</span>
-                  <span class="stat-val mono">{item.volume}</span>
+                  <span class="stat-label">Size</span>
+                  <span class="stat-val mono">{item.size}</span>
                 </div>
               {/if}
-              {#if item.base_price != null}
+              {#if item.base_value != null}
                 <div class="stat">
-                  <span class="stat-label">Base Price</span>
-                  <span class="stat-val mono credits">₡ {Number(item.base_price).toLocaleString()}</span>
+                  <span class="stat-label">Base Value</span>
+                  <span class="stat-val mono credits">₡ {Number(item.base_value).toLocaleString()}</span>
                 </div>
               {/if}
               {#if item.rarity}
                 <div class="stat">
                   <span class="stat-label">Rarity</span>
                   <span class="stat-val rarity-{item.rarity}">{item.rarity}</span>
+                </div>
+              {/if}
+              {#if item.tradeable != null}
+                <div class="stat">
+                  <span class="stat-label">Tradeable</span>
+                  <span class="stat-val">{item.tradeable ? 'Yes' : 'No'}</span>
                 </div>
               {/if}
               {#if item.stackable != null}

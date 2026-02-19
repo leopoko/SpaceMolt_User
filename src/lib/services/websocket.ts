@@ -25,6 +25,13 @@ function p<T>(msg: WsMessage): T {
   return (msg.payload ?? msg) as T;
 }
 
+const CATALOG_TYPES = new Set(['ships', 'skills', 'recipes', 'items']);
+
+// Detect catalog responses: { type: "ok", payload: { type: "ships"|..., items: [...], total_pages: N } }
+function isCatalogResponse(pl: Record<string, unknown>): boolean {
+  return CATALOG_TYPES.has(pl.type as string) && Array.isArray(pl.items) && pl.total_pages !== undefined;
+}
+
 class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -525,7 +532,7 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
-        } else if (pl.action === 'catalog') {
+        } else if (isCatalogResponse(pl)) {
           catalogStore.handleResponse(pl as unknown as CatalogResponse);
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
