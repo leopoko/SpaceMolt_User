@@ -39,11 +39,23 @@
 
   let selectedCategory = $state<string>('All');
 
-  let filteredCatalog = $derived(
-    selectedCategory === 'All'
+  // Budget filter
+  let budgetMode = $state<'all' | 'affordable' | 'custom'>('all');
+  let customBudget = $state<number>(0);
+
+  let filteredCatalog = $derived.by(() => {
+    let list = selectedCategory === 'All'
       ? shipStore.catalog
-      : shipStore.catalog.filter(s => s.class === selectedCategory)
-  );
+      : shipStore.catalog.filter(s => s.class === selectedCategory);
+
+    if (budgetMode === 'affordable') {
+      list = list.filter(s => s.price <= playerStore.credits);
+    } else if (budgetMode === 'custom' && customBudget > 0) {
+      list = list.filter(s => s.price <= customBudget);
+    }
+
+    return list;
+  });
 
   // Find max values in catalog for stat bars
   let maxStats = $derived.by(() => {
@@ -89,6 +101,30 @@
         {/if}
       </button>
     {/each}
+  </div>
+
+  <!-- Budget filter -->
+  <div class="budget-bar">
+    <span class="budget-label">Budget:</span>
+    <button class="budget-chip" class:active={budgetMode === 'all'} onclick={() => budgetMode = 'all'}>
+      All
+    </button>
+    <button class="budget-chip affordable" class:active={budgetMode === 'affordable'} onclick={() => budgetMode = 'affordable'}>
+      Affordable (₡{playerStore.credits.toLocaleString()})
+    </button>
+    <button class="budget-chip" class:active={budgetMode === 'custom'} onclick={() => budgetMode = 'custom'}>
+      Max
+    </button>
+    {#if budgetMode === 'custom'}
+      <input
+        class="budget-input mono"
+        type="number"
+        min="0"
+        placeholder="Max price"
+        bind:value={customBudget}
+      />
+    {/if}
+    <span class="result-count mono">{filteredCatalog.length} ships</span>
   </div>
 
   <div class="catalog-list">
@@ -279,11 +315,80 @@
     font-family: 'Roboto Mono', monospace;
   }
 
-  /* Catalog list */
-  .catalog-list {
+  /* Budget filter */
+  .budget-bar {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .budget-label {
+    font-size: 0.68rem;
+    color: #546e7a;
+    margin-right: 4px;
+  }
+
+  .budget-chip {
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    color: #78909c;
+    font-size: 0.68rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .budget-chip:hover { background: rgba(255,255,255,0.06); }
+
+  .budget-chip.active {
+    background: rgba(255,215,0,0.1);
+    border-color: rgba(255,215,0,0.35);
+    color: #ffd700;
+  }
+
+  .budget-chip.affordable.active {
+    background: rgba(76,175,80,0.1);
+    border-color: rgba(76,175,80,0.35);
+    color: #66bb6a;
+  }
+
+  .budget-input {
+    width: 100px;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 4px;
+    color: #ffd700;
+    font-size: 0.7rem;
+    outline: none;
+  }
+
+  .budget-input:focus { border-color: rgba(255,215,0,0.5); }
+
+  .result-count {
+    font-size: 0.62rem;
+    color: #546e7a;
+    margin-left: auto;
+  }
+
+  /* Catalog list — responsive grid up to 3 columns */
+  .catalog-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
+  }
+
+  @media (max-width: 960px) {
+    .catalog-list { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 600px) {
+    .catalog-list { grid-template-columns: 1fr; }
   }
 
   .ship-card {

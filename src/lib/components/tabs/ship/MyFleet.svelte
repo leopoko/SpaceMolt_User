@@ -23,40 +23,42 @@
   }
 </script>
 
-<Card class="space-card">
-  <Content>
-    <div class="section-head">
-      <span class="tab-section-title">My Fleet</span>
-      <button class="icon-btn" onclick={refreshFleet} title="Refresh">↻</button>
-    </div>
+<div class="section-head">
+  <span class="tab-section-title">My Fleet</span>
+  <button class="icon-btn" onclick={refreshFleet} title="Refresh">↻</button>
+</div>
 
     {#if shipStore.fleet.length > 0}
-      <div class="fleet-list">
+      <div class="fleet-grid">
         {#each shipStore.fleet as ship}
-          <div class="fleet-item" class:active={ship.id === shipStore.activeShipId}>
-            <div class="fleet-info">
-              <span class="fleet-name">{ship.name}</span>
-              <span class="fleet-type mono">{ship.type}</span>
-              {#if ship.location}
-                <span class="fleet-location">{ship.location}</span>
-              {/if}
-              <div class="fleet-bars">
-                <LinearProgress progress={ship.hull / ship.max_hull} class="progress-hull" style="height:4px" />
+          <Card class="space-card">
+            <Content>
+              <div class="fleet-item" class:active={ship.id === shipStore.activeShipId}>
+                <div class="fleet-info">
+                  <span class="fleet-name">{ship.name}</span>
+                  <span class="fleet-type mono">{ship.type}</span>
+                  {#if ship.location}
+                    <span class="fleet-location">{ship.location}</span>
+                  {/if}
+                  <div class="fleet-bars">
+                    <LinearProgress progress={ship.hull / ship.max_hull} class="progress-hull" style="height:4px" />
+                  </div>
+                </div>
+                <div class="fleet-btns">
+                  {#if ship.id !== shipStore.activeShipId}
+                    <button class="action-btn switch-btn" onclick={() => switchShip(ship.id)}>
+                      Switch
+                    </button>
+                    <button class="action-btn sell-btn" onclick={() => sellShip(ship.id)}>
+                      Sell
+                    </button>
+                  {:else}
+                    <span class="active-badge">ACTIVE</span>
+                  {/if}
+                </div>
               </div>
-            </div>
-            <div class="fleet-btns">
-              {#if ship.id !== shipStore.activeShipId}
-                <button class="action-btn switch-btn" onclick={() => switchShip(ship.id)}>
-                  Switch
-                </button>
-                <button class="action-btn sell-btn" onclick={() => sellShip(ship.id)}>
-                  Sell
-                </button>
-              {:else}
-                <span class="active-badge">ACTIVE</span>
-              {/if}
-            </div>
-          </div>
+            </Content>
+          </Card>
         {/each}
       </div>
     {:else}
@@ -66,8 +68,6 @@
     <Button variant="outlined" onclick={refreshFleet} style="width:100%;margin-top:12px">
       <Label>Refresh Fleet</Label>
     </Button>
-  </Content>
-</Card>
 
 <style>
   .section-head {
@@ -95,19 +95,27 @@
     padding: 12px 0;
   }
 
-  .fleet-list { display: flex; flex-direction: column; gap: 6px; }
+  .fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 960px) {
+    .fleet-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 600px) {
+    .fleet-grid { grid-template-columns: 1fr; }
+  }
 
   .fleet-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px;
-    background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.04);
-    border-radius: 4px;
   }
 
-  .fleet-item.active { border-color: rgba(79,195,247,0.3); }
+  .fleet-item.active :global(.space-card) { border-color: rgba(79,195,247,0.3); }
 
   .fleet-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
   .fleet-name { font-size: 0.8rem; color: #b0bec5; }
