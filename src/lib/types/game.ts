@@ -586,6 +586,8 @@ export interface Wreck {
   ship_type: string;
   loot: CargoItem[];
   expires_at: number;
+  owner?: string;
+  wreck_type?: string; // 'ship' | 'pirate' | 'jettison' etc.
 }
 
 // ---- Chat / Events ----
