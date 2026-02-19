@@ -394,6 +394,11 @@ class WebSocketService {
         } else if (cmd === 'self_destruct') {
           const message = (result?.message as string) ?? 'Ship self-destructed';
           eventsStore.add({ type: 'combat', message });
+        } else if (cmd === 'jettison' && result) {
+          const itemId = (result.item_id as string) ?? '';
+          const qty = (result.quantity as number) ?? 0;
+          const message = (result.message as string) ?? `Jettisoned ${qty}x ${itemId}`;
+          eventsStore.add({ type: 'info', message });
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -1163,6 +1168,10 @@ class WebSocketService {
     const payload: Record<string, string> = {};
     if (asteroidId) payload.target = asteroidId;
     this.send({ type: 'mine', payload });
+  }
+
+  jettison(itemId: string, quantity: number) {
+    this.send({ type: 'jettison', payload: { item_id: itemId, quantity } });
   }
 
   // ---- Ship Services ----
