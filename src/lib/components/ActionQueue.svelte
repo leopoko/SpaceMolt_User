@@ -15,9 +15,9 @@
 
   <div class="aq-list">
     {#if actionQueueStore.currentAction}
-      <div class="aq-item aq-current">
+      <div class="aq-item aq-current" class:aq-holding={actionQueueStore.holding}>
         <div class="aq-item-label">
-          <span class="aq-current-badge">NOW</span>
+          <span class="aq-current-badge">{actionQueueStore.holding ? 'JUMP' : 'NOW'}</span>
           <span class="aq-label">{actionQueueStore.currentAction}</span>
         </div>
       </div>
@@ -156,6 +156,21 @@
   .aq-item.aq-current {
     background: rgba(255, 152, 0, 0.1);
     border-color: rgba(255, 152, 0, 0.4);
+  }
+
+  .aq-item.aq-holding {
+    background: rgba(33, 150, 243, 0.1);
+    border-color: rgba(33, 150, 243, 0.4);
+  }
+
+  .aq-item.aq-holding .aq-current-badge {
+    color: #2196f3;
+    background: rgba(33, 150, 243, 0.15);
+    border-color: rgba(33, 150, 243, 0.4);
+  }
+
+  .aq-item.aq-holding .aq-label {
+    color: #64b5f6;
   }
 
   .aq-item-label {
