@@ -5,7 +5,7 @@ import type {
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition,
   ForumThread, ForumReply, ForumCategory,
-  TradeOffer, TradeItems
+  TradeOffer
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -405,14 +405,18 @@ class WebSocketService {
           const tradeId = (result.trade_id as string) ?? '';
           const message = (result.message as string) ?? 'Trade offer sent';
           if (tradeId) {
+            const offerItems = Array.isArray(result.offer_items) ? (result.offer_items as TradeOffer['offer_items']) : [];
+            const requestItems = Array.isArray(result.request_items) ? (result.request_items as TradeOffer['request_items']) : [];
             tradeStore.addOutgoing({
               trade_id: tradeId,
               offerer_id: (result.offerer_id as string) ?? '',
               offerer_name: authStore.username,
               target_id: (result.target_id as string) ?? '',
               target_name: (result.target_name as string) ?? (result.target as string) ?? '',
-              credits: (result.credits as number) ?? 0,
-              items: (result.items as TradeItems) ?? {},
+              offer_credits: (result.offer_credits as number) ?? (result.credits as number) ?? 0,
+              offer_items: offerItems,
+              request_credits: (result.request_credits as number) ?? 0,
+              request_items: requestItems,
               status: 'pending',
               created_at: Date.now(),
             });
@@ -903,14 +907,18 @@ class WebSocketService {
           const tradeId = (raw.trade_id as string) ?? '';
           const message = pl.message ?? 'Trade offer sent';
           if (tradeId) {
+            const oItems = Array.isArray(raw.offer_items) ? (raw.offer_items as TradeOffer['offer_items']) : [];
+            const rItems = Array.isArray(raw.request_items) ? (raw.request_items as TradeOffer['request_items']) : [];
             tradeStore.addOutgoing({
               trade_id: tradeId,
               offerer_id: '',
               offerer_name: authStore.username,
               target_id: (raw.target_id as string) ?? '',
               target_name: (raw.target_name as string) ?? (raw.target as string) ?? '',
-              credits: (raw.credits as number) ?? 0,
-              items: (raw.items as TradeItems) ?? {},
+              offer_credits: (raw.offer_credits as number) ?? (raw.credits as number) ?? 0,
+              offer_items: oItems,
+              request_credits: (raw.request_credits as number) ?? 0,
+              request_items: rItems,
               status: 'pending',
               created_at: Date.now(),
             });
@@ -1154,22 +1162,29 @@ class WebSocketService {
 
       // ---- Trade messages ----
 
-      case 'trade_offer': {
+      case 'trade_offer':
+      case 'trade_offer_received': {
         // Incoming trade offer from another player
         const raw = p<Record<string, unknown>>(msg);
+        const offerItems = Array.isArray(raw.offer_items) ? (raw.offer_items as TradeOffer['offer_items']) : [];
+        const requestItems = Array.isArray(raw.request_items) ? (raw.request_items as TradeOffer['request_items']) : [];
         const offer: TradeOffer = {
           trade_id: (raw.trade_id as string) ?? '',
           offerer_id: (raw.offerer_id as string) ?? (raw.from_id as string) ?? '',
           offerer_name: (raw.offerer_name as string) ?? (raw.from as string) ?? (raw.from_name as string) ?? 'Unknown',
-          target_id: (raw.target_id as string) ?? (raw.to_id as string) ?? '',
-          target_name: (raw.target_name as string) ?? (raw.to as string) ?? (raw.to_name as string) ?? authStore.username,
-          credits: (raw.credits as number) ?? 0,
-          items: (raw.items as TradeItems) ?? {},
+          target_id: (raw.target_id as string) ?? undefined,
+          target_name: (raw.target_name as string) ?? authStore.username,
+          offer_credits: (raw.offer_credits as number) ?? (raw.credits as number) ?? 0,
+          offer_items: offerItems,
+          request_credits: (raw.request_credits as number) ?? 0,
+          request_items: requestItems,
           status: 'pending',
+          expires_at: (raw.expires_at as string) ?? undefined,
           created_at: Date.now(),
         };
         tradeStore.addIncoming(offer);
-        eventsStore.add({ type: 'trade', message: `Trade offer from ${offer.offerer_name}: ₡${offer.credits.toLocaleString()} + ${Object.keys(offer.items).length} item(s)` });
+        const itemCount = offerItems.length + requestItems.length;
+        eventsStore.add({ type: 'trade', message: `Trade offer from ${offer.offerer_name}: ₡${offer.offer_credits.toLocaleString()} + ${itemCount} item(s)` });
         break;
       }
 
@@ -1527,7 +1542,7 @@ class WebSocketService {
 
   // ---- Player-to-Player Trade ----
 
-  tradeOffer(targetId: string, credits: number, items: TradeItems) {
+  tradeOffer(targetId: string, credits: number, items: Record<string, number>) {
     tradeStore.loading = true;
     this.send({ type: 'trade_offer', payload: { target_id: targetId, credits, items } });
   }

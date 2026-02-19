@@ -727,20 +727,30 @@ export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'fa
 
 export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'completed';
 
-/** Items in a trade offer: { item_id: quantity } */
-export type TradeItems = Record<string, number>;
-
 /** A trade offer (sent or received) */
 export interface TradeOffer {
   trade_id: string;
   offerer_id: string;
   offerer_name: string;
-  target_id: string;
-  target_name: string;
-  credits: number;
-  items: TradeItems;
+  target_id?: string;
+  target_name?: string;
+  /** Credits the offerer is giving */
+  offer_credits: number;
+  /** Items the offerer is giving (array of {item_id, quantity}) */
+  offer_items: TradeItemEntry[];
+  /** Credits the offerer is requesting */
+  request_credits: number;
+  /** Items the offerer is requesting */
+  request_items: TradeItemEntry[];
   status: TradeStatus;
+  expires_at?: string;
   created_at?: number;
+}
+
+export interface TradeItemEntry {
+  item_id: string;
+  quantity: number;
+  name?: string;
 }
 
 // ---- Game State (full snapshot) ----

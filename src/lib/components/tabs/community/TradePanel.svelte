@@ -2,10 +2,9 @@
   import { tradeStore } from '$lib/stores/trade.svelte';
   import { shipStore } from '$lib/stores/ship.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
-  import type { TradeOffer, TradeItems } from '$lib/types/game';
+  import type { TradeOffer, TradeItemEntry } from '$lib/types/game';
 
   let { targetUsername }: { targetUsername: string } = $props();
 
@@ -48,7 +47,8 @@
 
   function sendOffer() {
     if (!targetUsername) return;
-    const items: TradeItems = { ...offerItems };
+    // Build items as { item_id: quantity } for the API
+    const items: Record<string, number> = { ...offerItems };
     actionQueueStore.enqueue(
       `Trade → ${targetUsername}`,
       () => ws.tradeOffer(targetUsername, offerCredits, items)
@@ -74,10 +74,16 @@
     ws.tradeCancel(tradeId);
   }
 
-  function formatItems(items: TradeItems): string {
-    const entries = Object.entries(items);
-    if (entries.length === 0) return 'None';
-    return entries.map(([id, qty]) => `${qty}x ${id}`).join(', ');
+  function formatItemEntries(items: TradeItemEntry[]): string {
+    if (!items || items.length === 0) return '';
+    return items.map(i => `${i.quantity}x ${i.name ?? i.item_id}`).join(', ');
+  }
+
+  function formatOfferSummary(offer: TradeOffer): string {
+    const parts: string[] = [];
+    if (offer.offer_credits > 0) parts.push(`₡${offer.offer_credits.toLocaleString()}`);
+    if (offer.offer_items.length > 0) parts.push(formatItemEntries(offer.offer_items));
+    return parts.length > 0 ? parts.join(' + ') : 'Nothing';
   }
 
   let hasOfferContent = $derived(offerCredits > 0 || Object.keys(offerItems).length > 0);
@@ -114,13 +120,20 @@
               <span class="trade-status pending">PENDING</span>
             </div>
             <div class="trade-details">
-              {#if offer.credits > 0}
-                <span class="trade-credits">₡{offer.credits.toLocaleString()}</span>
-              {/if}
-              {#if Object.keys(offer.items).length > 0}
-                <span class="trade-items">{formatItems(offer.items)}</span>
-              {/if}
+              <span class="trade-label">Offering:</span>
+              <span class="trade-value">{formatOfferSummary(offer)}</span>
             </div>
+            {#if offer.request_credits > 0 || offer.request_items.length > 0}
+              <div class="trade-details">
+                <span class="trade-label">Requesting:</span>
+                <span class="trade-value request">
+                  {#if offer.request_credits > 0}₡{offer.request_credits.toLocaleString()}{/if}
+                  {#if offer.request_items.length > 0}
+                    {offer.request_credits > 0 ? ' + ' : ''}{formatItemEntries(offer.request_items)}
+                  {/if}
+                </span>
+              </div>
+            {/if}
             <div class="trade-actions">
               <button class="trade-btn accept" onclick={() => acceptTrade(offer.trade_id)}>
                 <span class="material-icons" style="font-size:14px">check</span>
@@ -147,12 +160,8 @@
               <span class="trade-status pending">PENDING</span>
             </div>
             <div class="trade-details">
-              {#if offer.credits > 0}
-                <span class="trade-credits">₡{offer.credits.toLocaleString()}</span>
-              {/if}
-              {#if Object.keys(offer.items).length > 0}
-                <span class="trade-items">{formatItems(offer.items)}</span>
-              {/if}
+              <span class="trade-label">Offering:</span>
+              <span class="trade-value">{formatOfferSummary(offer)}</span>
             </div>
             <div class="trade-actions">
               <button class="trade-btn cancel" onclick={() => cancelTrade(offer.trade_id)}>
@@ -317,15 +326,25 @@
 
   .trade-details {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
-    color: #90a4ae;
     font-size: 0.7rem;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
   }
 
-  .trade-credits { color: #ffd700; }
-  .trade-items { color: #b0bec5; }
+  .trade-label {
+    color: #546e7a;
+    flex-shrink: 0;
+    font-size: 0.65rem;
+  }
+
+  .trade-value {
+    color: #ffd700;
+  }
+
+  .trade-value.request {
+    color: #ff9800;
+  }
 
   .trade-actions {
     display: flex;
