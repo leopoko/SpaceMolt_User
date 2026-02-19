@@ -51,19 +51,19 @@
 
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
-    const spanX = maxX - minX;
-    const spanY = maxY - minY;
-    // Use the larger span to keep square coordinate space, add padding
-    const span = Math.max(spanX, spanY, 0.5);
-    const pad = span * padding;
-    const half = span / 2 + pad;
+    const spanX = Math.max(maxX - minX, 0.5);
+    const spanY = Math.max(maxY - minY, 0.5);
+    const padX = spanX * padding;
+    const padY = spanY * padding;
+    const halfX = spanX / 2 + padX;
+    const halfY = spanY / 2 + padY;
 
     return {
-      vx: cx - half,
-      vy: cy - half,
-      vw: half * 2,
-      vh: half * 2,
-      scale: half,
+      vx: cx - halfX,
+      vy: cy - halfY,
+      vw: halfX * 2,
+      vh: halfY * 2,
+      scale: Math.max(halfX, halfY),
       cx,
       cy,
     };
