@@ -3,7 +3,6 @@ import type { Recipe } from '$lib/types/game';
 class CraftingStore {
   recipes = $state<Recipe[]>([]);
   selectedRecipe = $state<Recipe | null>(null);
-  craftingInProgress = $state(false);
   craftQuantity = $state(1);
   lastResult = $state<string | null>(null);
 
@@ -26,17 +25,12 @@ class CraftingStore {
     this.craftQuantity = 1;
   }
 
-  setInProgress(value: boolean) {
-    this.craftingInProgress = value;
-  }
-
   setLastResult(msg: string) {
     this.lastResult = msg;
     setTimeout(() => { this.lastResult = null; }, 5000);
   }
 
   reset() {
-    this.craftingInProgress = false;
     this.lastResult = null;
   }
 }

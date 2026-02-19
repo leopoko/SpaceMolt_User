@@ -2,15 +2,16 @@
   import Button, { Label } from '@smui/button';
   import Card, { Content } from '@smui/card';
   import Textfield from '@smui/textfield';
-  import LinearProgress from '@smui/linear-progress';
   import { craftingStore } from '$lib/stores/crafting.svelte';
   import { shipStore } from '$lib/stores/ship.svelte';
+  import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
 
   let searchText = $state('');
   let selectedCategory = $state('');
   let cargoOnly = $state(false);
+  let repeatCount = $state(1);
 
   const allRecipes = $derived(craftingStore.recipes);
   const categories = $derived(craftingStore.categories);
@@ -72,7 +73,15 @@
 
   function doCraft() {
     if (!craftingStore.selectedRecipe) return;
-    ws.craft(craftingStore.selectedRecipe.id, craftingStore.craftQuantity);
+    const recipe = craftingStore.selectedRecipe;
+    const qty = craftingStore.craftQuantity;
+    const n = Math.max(1, repeatCount);
+    for (let i = 0; i < n; i++) {
+      const label = n > 1
+        ? `Craft ${recipe.name} x${qty} [${i + 1}/${n}]`
+        : `Craft ${recipe.name} x${qty}`;
+      actionQueueStore.enqueue(label, () => ws.craft(recipe.id, qty));
+    }
   }
 
   function loadRecipes() {
@@ -260,21 +269,26 @@
             input$min="1"
           />
 
-          {#if craftingStore.craftingInProgress}
-            <div style="flex:1">
-              <LinearProgress indeterminate style="--mdc-theme-primary:#7c4dff" />
-              <span class="crafting-label">Crafting...</span>
-            </div>
-          {:else}
-            <Button
-              variant="raised"
-              onclick={doCraft}
-              disabled={!canCraft(recipe) || craftingStore.craftingInProgress}
-              style="flex:1; --mdc-theme-primary:#7c4dff"
-            >
-              <Label>Craft</Label>
-            </Button>
-          {/if}
+          <Button
+            variant="raised"
+            onclick={doCraft}
+            disabled={!canCraft(recipe)}
+            style="flex:1; --mdc-theme-primary:#7c4dff"
+          >
+            <Label>⚒ Craft</Label>
+          </Button>
+        </div>
+
+        <div class="repeat-row">
+          <input type="number" class="repeat-input" min="1" max="999" bind:value={repeatCount} />
+          <Button
+            variant="outlined"
+            onclick={doCraft}
+            disabled={!canCraft(recipe)}
+            style="flex:1"
+          >
+            <Label>×{repeatCount} Craft</Label>
+          </Button>
         </div>
 
         {#if craftingStore.lastResult}
@@ -547,6 +561,29 @@
     margin-top: 16px;
   }
 
-  .crafting-label { font-size: 0.72rem; color: #b39ddb; margin-top: 4px; display: block; }
+  .repeat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .repeat-input {
+    width: 60px;
+    padding: 4px 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(79,195,247,0.2);
+    border-radius: 4px;
+    color: #b0bec5;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .repeat-input:focus {
+    outline: none;
+    border-color: rgba(79,195,247,0.5);
+  }
+
   .craft-result { font-size: 0.78rem; color: #66bb6a; margin-top: 8px; text-align: center; }
 </style>

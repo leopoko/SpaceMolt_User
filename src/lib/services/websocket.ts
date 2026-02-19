@@ -307,7 +307,6 @@ class WebSocketService {
           eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
           this.viewStorage();
         } else if (cmd === 'craft') {
-          craftingStore.setInProgress(false);
           const message = (result?.message as string) ?? 'Craft complete';
           craftingStore.setLastResult(message);
           eventsStore.add({ type: 'info', message });
@@ -334,7 +333,6 @@ class WebSocketService {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         }
         if (cmd === 'craft') {
-          craftingStore.setInProgress(false);
           craftingStore.setLastResult(errMsg);
         }
         eventsStore.add({ type: 'error', message: errMsg });
@@ -477,7 +475,6 @@ class WebSocketService {
 
       case 'craft_result': {
         const pl = p<{ message?: string; success?: boolean; ship?: never }>(msg);
-        craftingStore.setInProgress(false);
         const resultMsg = pl.message ?? (pl.success ? 'Craft complete' : 'Craft failed');
         craftingStore.setLastResult(resultMsg);
         eventsStore.add({ type: 'info', message: resultMsg });
@@ -741,7 +738,6 @@ class WebSocketService {
 
   getRecipes() { this.send({ type: 'get_recipes' }); }
   craft(recipeId: string, quantity: number) {
-    craftingStore.setInProgress(true);
     this.send({ type: 'craft', payload: { recipe_id: recipeId, quantity } });
   }
 
