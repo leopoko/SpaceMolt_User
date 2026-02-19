@@ -686,7 +686,22 @@ class WebSocketService {
 
   // ---- Mining ----
 
-  mine(asteroidId: string) { this.send({ type: 'mine', payload: { target: asteroidId } }); }
+  mine(asteroidId?: string) {
+    const payload: Record<string, string> = {};
+    if (asteroidId) payload.target = asteroidId;
+    this.send({ type: 'mine', payload });
+  }
+
+  // ---- Ship Services ----
+
+  repair() { this.send({ type: 'repair' }); }
+
+  refuel(quantity?: number, itemId?: string) {
+    const payload: Record<string, unknown> = {};
+    if (quantity != null) payload.quantity = quantity;
+    if (itemId) payload.item_id = itemId;
+    this.send({ type: 'refuel', payload });
+  }
 
   // ---- Trading ----
 

@@ -19,6 +19,9 @@
   let showDepositSuggestions = $state(false);
   let showWithdrawSuggestions = $state(false);
 
+  // Selected stored item (clickable rows)
+  let selectedStoredItem = $state<string | null>(null);
+
   // Auto-refresh when Base tab is selected
   $effect(() => {
     if (uiStore.activeTab.label === 'Base' && playerStore.isDocked) {
@@ -90,6 +93,45 @@
     actionQueueStore.enqueue(`Withdraw ${qty}x ${itemId}`, () => ws.withdrawItems(itemId, qty));
     withdrawItemId = '';
     withdrawQty = 1;
+  }
+
+  /** Deposit a specific cargo item (all quantity) */
+  function doDepositSelected(itemId: string) {
+    const cargoItem = shipStore.cargo.find(c => c.item_id === itemId);
+    if (!cargoItem || cargoItem.quantity <= 0) return;
+    const qty = cargoItem.quantity;
+    actionQueueStore.enqueue(`Deposit ${qty}x ${itemId}`, () => ws.depositItems(itemId, qty));
+  }
+
+  /** Deposit ALL cargo items (each as a separate queue action) */
+  function doDepositAllCargo() {
+    const items = shipStore.cargo.filter(c => c.quantity > 0);
+    if (items.length === 0) return;
+    for (const c of items) {
+      const itemId = c.item_id;
+      const qty = c.quantity;
+      actionQueueStore.enqueue(`Deposit ${qty}x ${itemId}`, () => ws.depositItems(itemId, qty));
+    }
+  }
+
+  /** Click on a stored item row to select it for withdraw */
+  function selectStoredRow(itemId: string) {
+    if (selectedStoredItem === itemId) {
+      selectedStoredItem = null;
+      withdrawItemId = '';
+    } else {
+      selectedStoredItem = itemId;
+      withdrawItemId = itemId;
+      const stItem = baseStore.items.find(i => i.item_id === itemId);
+      if (stItem) withdrawQty = stItem.quantity;
+    }
+  }
+
+  /** Click on a cargo item row to select it for deposit */
+  function selectCargoRow(itemId: string) {
+    depositItemId = itemId;
+    const cargoItem = shipStore.cargo.find(c => c.item_id === itemId);
+    if (cargoItem) depositQty = cargoItem.quantity;
   }
 
   function doTransferCredits() {
@@ -211,7 +253,11 @@
             </thead>
             <tbody>
               {#each baseStore.items as item}
-                <tr>
+                <tr
+                  class="clickable-row"
+                  class:selected-row={selectedStoredItem === item.item_id}
+                  onclick={() => selectStoredRow(item.item_id)}
+                >
                   <td>{item.name ?? item.item_id}</td>
                   <td class="num mono">{item.quantity}</td>
                   <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
@@ -226,21 +272,32 @@
         {/if}
 
         {#if shipStore.cargo.length > 0}
-          <p class="tab-section-title" style="margin-top:12px">Cargo (Ship)</p>
+          <div class="cargo-header">
+            <p class="tab-section-title" style="margin:0">Cargo (Ship)</p>
+            <button class="deposit-all-btn" onclick={doDepositAllCargo} title="Deposit all cargo items">
+              Deposit All ↓
+            </button>
+          </div>
           <table class="storage-table">
             <thead>
               <tr>
                 <th>Item</th>
                 <th class="num">Qty</th>
                 <th class="num">Volume</th>
+                <th style="width:50px"></th>
               </tr>
             </thead>
             <tbody>
               {#each shipStore.cargo as item}
-                <tr class="cargo-row">
+                <tr class="cargo-row clickable-row" onclick={() => selectCargoRow(item.item_id)}>
                   <td>{item.name ?? item.item_id}</td>
                   <td class="num mono">{item.quantity}</td>
                   <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
+                  <td>
+                    <button class="deposit-btn" onclick={(e) => { e.stopPropagation(); doDepositSelected(item.item_id); }} title="Deposit all {item.item_id}">
+                      ↓
+                    </button>
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -439,6 +496,10 @@
     letter-spacing: 0.08em;
   }
 
+  .storage-table th.num {
+    text-align: right;
+  }
+
   .storage-table td {
     padding: 4px;
     color: #90a4ae;
@@ -449,7 +510,50 @@
   .mono { font-family: 'Roboto Mono', monospace; }
   .credits { color: #ffd700; }
 
+  .clickable-row {
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .clickable-row:hover { background: rgba(79,195,247,0.05); }
+
+  .selected-row {
+    background: rgba(79,195,247,0.1) !important;
+    border-left: 2px solid #4fc3f7;
+  }
+
   .cargo-row td { color: #78909c; }
+
+  .cargo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .deposit-all-btn {
+    background: none;
+    border: 1px solid rgba(79,195,247,0.3);
+    color: #4fc3f7;
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .deposit-all-btn:hover { background: rgba(79,195,247,0.1); }
+
+  .deposit-btn {
+    background: none;
+    border: 1px solid rgba(79,195,247,0.2);
+    color: #4fc3f7;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .deposit-btn:hover { background: rgba(79,195,247,0.1); }
 
   .autocomplete-wrapper { position: relative; width: 100%; }
 

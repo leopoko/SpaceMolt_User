@@ -15,6 +15,8 @@ export interface QueuedAction {
 
 class ActionQueueStore {
   items = $state<QueuedAction[]>([]);
+  /** Currently executing action label (shown in ActionQueue UI). */
+  currentAction = $state<string | null>(null);
   /** Tracks the last tick number for which we executed an action (avoids double-fire). */
   private lastExecutedTick = -1;
   /** Plain Map – NOT in $state – so function refs stay unproxied. */
@@ -25,6 +27,10 @@ class ActionQueueStore {
     this.executors.set(id, execute);
     this.items = [...this.items, { id, label }];
     eventsStore.add({ type: 'info', message: `[Queue] 追加: ${label} (${this.items.length}件)` });
+    // If no action is currently executing, run immediately without waiting for next tick
+    if (!this.currentAction) {
+      this.executeNext();
+    }
   }
 
   remove(id: number) {
@@ -63,6 +69,7 @@ class ActionQueueStore {
     this.items = rest;
     const execute = this.executors.get(first.id);
     this.executors.delete(first.id);
+    this.currentAction = first.label;
     eventsStore.add({ type: 'info', message: `[Queue] 実行: ${first.label}` });
     try {
       execute?.();
@@ -70,11 +77,18 @@ class ActionQueueStore {
       console.error('[ActionQueue] execute failed:', e);
       eventsStore.add({ type: 'error', message: `[Queue] エラー: ${first.label}` });
     }
+    // Clear current action after a short delay to allow UI to show it
+    setTimeout(() => {
+      if (this.currentAction === first.label) {
+        this.currentAction = null;
+      }
+    }, 8000);
   }
 
   clear() {
     this.executors.clear();
     this.items = [];
+    this.currentAction = null;
   }
 }
 

@@ -14,8 +14,17 @@
   </div>
 
   <div class="aq-list">
-    {#if actionQueueStore.items.length === 0}
-      <div class="aq-empty">キューは空です</div>
+    {#if actionQueueStore.currentAction}
+      <div class="aq-item aq-current">
+        <div class="aq-item-label">
+          <span class="aq-current-badge">NOW</span>
+          <span class="aq-label">{actionQueueStore.currentAction}</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if actionQueueStore.items.length === 0 && !actionQueueStore.currentAction}
+      <div class="aq-empty">Queue is empty</div>
     {:else}
       {#each actionQueueStore.items as item, i (item.id)}
         <div class="aq-item" class:aq-next={i === 0}>
@@ -144,12 +153,35 @@
     border-color: rgba(79, 195, 247, 0.25);
   }
 
+  .aq-item.aq-current {
+    background: rgba(255, 152, 0, 0.1);
+    border-color: rgba(255, 152, 0, 0.4);
+  }
+
   .aq-item-label {
     display: flex;
     align-items: center;
     gap: 5px;
     min-width: 0;
     flex: 1;
+  }
+
+  .aq-current-badge {
+    font-size: 0.55rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 700;
+    color: #ff9800;
+    background: rgba(255, 152, 0, 0.15);
+    border: 1px solid rgba(255, 152, 0, 0.4);
+    border-radius: 2px;
+    padding: 0 3px;
+    flex-shrink: 0;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
 
   .aq-next-badge {
@@ -189,6 +221,10 @@
 
   .aq-item.aq-next .aq-label {
     color: #90caf9;
+  }
+
+  .aq-item.aq-current .aq-label {
+    color: #ffb74d;
   }
 
   .aq-controls {
