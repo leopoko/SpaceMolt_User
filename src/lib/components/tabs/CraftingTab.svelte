@@ -159,13 +159,14 @@
     const recipe = craftingStore.selectedRecipe;
     const count = clampedCount;
 
-    const enqueueCraftStep = () => {
-      actionQueueStore.enqueue(`CraftMax ${recipe.name} ×${count}`, () => {
+    const enqueueCraftStep = (first = false) => {
+      const enq = first ? actionQueueStore.enqueue.bind(actionQueueStore) : actionQueueStore.enqueueNext.bind(actionQueueStore);
+      enq(`CraftMax ${recipe.name} ×${count}`, () => {
         // Re-check materials at execution time
         const available = maxCraftableCount(recipe, count);
         if (available > 0) {
           ws.craft(recipe.id, count);
-          // Re-enqueue for next tick
+          // Re-enqueue as next action
           enqueueCraftStep();
         } else {
           eventsStore.add({ type: 'info', message: `[CraftMax] ${recipe.name}: 素材不足のため終了` });
@@ -173,7 +174,7 @@
       });
     };
 
-    enqueueCraftStep();
+    enqueueCraftStep(true);
   }
 
   function loadRecipes() {
