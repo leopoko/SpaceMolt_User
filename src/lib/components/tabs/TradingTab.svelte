@@ -253,7 +253,7 @@
                     <td></td>
                     <td></td>
                     <td class="detail-cell" colspan="1">
-                      <p class="detail-title buy-label">Buy Orders</p>
+                      <p class="detail-title buy-label">Wanted (Sell to)</p>
                       {#if item.buy_orders.length > 0}
                         {#each item.buy_orders as order}
                           <div class="detail-order-row">
@@ -267,7 +267,7 @@
                       {/if}
                     </td>
                     <td class="detail-cell" colspan="1">
-                      <p class="detail-title sell-label">Sell Orders</p>
+                      <p class="detail-title sell-label">For Sale (Buy from)</p>
                       {#if item.sell_orders.length > 0}
                         {#each item.sell_orders as order}
                           <div class="detail-order-row">
