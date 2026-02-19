@@ -229,14 +229,28 @@
 
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
 
-  // --- Memo browsing (when undocked) ---
+  // --- Memo browsing ---
   let selectedMemoStation = $state('');
   let viewingMemo = $derived.by(() => {
-    if (playerStore.isDocked) return null;
     if (!selectedMemoStation) return null;
     return marketMemoStore.getMemo(selectedMemoStation);
   });
   let memoItems = $derived(viewingMemo?.items ?? []);
+
+  // Memos from other stations (excluding current docked station)
+  let otherMemos = $derived.by(() => {
+    const currentBase = marketStore.baseName;
+    return marketMemoStore.allMemos.filter(m => m.base !== currentBase);
+  });
+
+  // Reset selection if the selected station is no longer in the other memos list
+  $effect(() => {
+    if (selectedMemoStation && playerStore.isDocked && otherMemos.length > 0) {
+      if (!otherMemos.some(m => m.base === selectedMemoStation)) {
+        selectedMemoStation = '';
+      }
+    }
+  });
 
   // Expand state for memo items
   let expandedMemoItems = $state<Set<string>>(new Set());
@@ -577,6 +591,114 @@
           </Card>
         {/if}
       </div>
+
+      <!-- Memo browser for other stations (while docked) -->
+      {#if otherMemos.length > 0}
+        <Card class="space-card">
+          <Content>
+            <p class="tab-section-title">Other Station Memos</p>
+            <div class="memo-selector">
+              <select class="text-input" bind:value={selectedMemoStation}>
+                <option value="">-- Select Station --</option>
+                {#each otherMemos as memo}
+                  <option value={memo.base}>{memo.base} ({new Date(memo.savedAt).toLocaleDateString()})</option>
+                {/each}
+              </select>
+              {#if selectedMemoStation}
+                <button class="action-btn cancel-btn" onclick={() => { marketMemoStore.removeMemo(selectedMemoStation); selectedMemoStation = ''; }} title="Delete this memo">
+                  <span class="material-icons" style="font-size:12px">delete</span>
+                </button>
+              {/if}
+            </div>
+
+            {#if viewingMemo}
+              <p class="memo-info">
+                <span class="station-label mono">{viewingMemo.base}</span>
+                <span class="memo-saved-hint">Saved {new Date(viewingMemo.savedAt).toLocaleString()}</span>
+              </p>
+              {#if memoItems.length > 0}
+                <table class="market-table">
+                  <thead>
+                    <tr>
+                      <th style="width:24px"></th>
+                      <th>Item</th>
+                      <th class="num">Best Buy</th>
+                      <th class="num">Best Sell</th>
+                      <th class="num">Spread</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each memoItems as item (item.item_id)}
+                      {@const isOwned = ownedItemIds.has(item.item_id)}
+                      <tr class="item-row" class:expanded={expandedMemoItems.has(item.item_id)} class:owned-row={isOwned} onclick={() => toggleMemoExpand(item.item_id)}>
+                        <td class="expand-icon">
+                          <span class="material-icons" style="font-size:14px">
+                            {expandedMemoItems.has(item.item_id) ? 'expand_more' : 'chevron_right'}
+                          </span>
+                        </td>
+                        <td class="item-name">
+                          {item.item_name}
+                          {#if isOwned}<span class="owned-badge">OWNED</span>{/if}
+                        </td>
+                        <td class="num mono buy-price">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
+                        <td class="num mono sell-price">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
+                        <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
+                      </tr>
+
+                      {#if expandedMemoItems.has(item.item_id)}
+                        <tr class="detail-row">
+                          <td colspan="5">
+                            <div class="detail-grid">
+                              <div class="detail-section">
+                                <p class="detail-title buy-label">Wanted (Sell to)</p>
+                                {#if item.buy_orders.length > 0}
+                                  <table class="detail-table">
+                                    <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
+                                    <tbody>
+                                      {#each item.buy_orders as order}
+                                        <tr>
+                                          <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
+                                          <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                        </tr>
+                                      {/each}
+                                    </tbody>
+                                  </table>
+                                {:else}
+                                  <p class="detail-empty">No buy orders</p>
+                                {/if}
+                              </div>
+                              <div class="detail-section">
+                                <p class="detail-title sell-label">For Sale (Buy from)</p>
+                                {#if item.sell_orders.length > 0}
+                                  <table class="detail-table">
+                                    <thead><tr><th class="num">Price</th><th class="num">Qty</th></tr></thead>
+                                    <tbody>
+                                      {#each item.sell_orders as order}
+                                        <tr>
+                                          <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
+                                          <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                        </tr>
+                                      {/each}
+                                    </tbody>
+                                  </table>
+                                {:else}
+                                  <p class="detail-empty">No sell orders</p>
+                                {/if}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      {/if}
+                    {/each}
+                  </tbody>
+                </table>
+              {:else}
+                <p class="empty-hint">No items in this memo.</p>
+              {/if}
+            {/if}
+          </Content>
+        </Card>
+      {/if}
     {/if}
   {:else}
     <!-- UNDOCKED: Show memo browser + cargo -->
