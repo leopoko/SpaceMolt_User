@@ -417,7 +417,8 @@ export interface ScanResult {
 export interface TargetScanResult {
   target_id: string;
   success: boolean;
-  revealed_info: string[];
+  revealed_info: string[] | null;
+  tick?: number;
   username?: string;
   ship_class?: string;
   cloaked?: boolean;

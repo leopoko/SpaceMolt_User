@@ -5,7 +5,9 @@
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
 
-  let expandedTarget = $state<string | null>(null);
+  let selectedTargetId = $state<string | null>(null);
+  let filterText = $state('');
+  let sortBy = $state<'name' | 'ship' | 'combat'>('name');
 
   function scanTarget(e: Event, targetId: string, username: string) {
     e.stopPropagation();
@@ -17,16 +19,24 @@
     actionQueueStore.enqueue(`Attack ${username}`, () => ws.attack(targetId));
   }
 
-  function toggleExpand(targetId: string) {
-    expandedTarget = expandedTarget === targetId ? null : targetId;
+  function selectTarget(targetId: string) {
+    selectedTargetId = selectedTargetId === targetId ? null : targetId;
   }
 
   function formatTick(tick: number): string {
     return `T${tick}`;
   }
 
-  // Merge nearby players: prefer scanResult targets, fallback to systemStore
-  let nearbyTargets = $derived(() => {
+  interface NearbyTarget {
+    id: string;
+    username: string;
+    ship: string;
+    visible: boolean;
+    in_combat: boolean;
+  }
+
+  // Build raw target list from scan result or system store
+  let rawTargets = $derived((): NearbyTarget[] => {
     if (combatStore.scanResult?.targets?.length) {
       return combatStore.scanResult.targets.map(t => ({
         id: t.id ?? t.player_id ?? '',
@@ -44,107 +54,120 @@
       in_combat: p.in_combat ?? false,
     }));
   });
+
+  // Apply filter, sort, and pin selected to top
+  let displayTargets = $derived((): NearbyTarget[] => {
+    let list = rawTargets();
+
+    // Filter
+    if (filterText.trim()) {
+      const q = filterText.trim().toLowerCase();
+      list = list.filter(t =>
+        t.username.toLowerCase().includes(q) ||
+        t.ship.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    list = [...list].sort((a, b) => {
+      if (sortBy === 'name') return a.username.localeCompare(b.username);
+      if (sortBy === 'ship') return a.ship.localeCompare(b.ship);
+      // combat: in_combat first
+      return (b.in_combat ? 1 : 0) - (a.in_combat ? 1 : 0);
+    });
+
+    // Pin selected to top
+    if (selectedTargetId) {
+      const idx = list.findIndex(t => t.id === selectedTargetId);
+      if (idx > 0) {
+        const [selected] = list.splice(idx, 1);
+        list.unshift(selected);
+      }
+    }
+
+    return list;
+  });
+
+  // Currently selected target data
+  let selectedTarget = $derived((): NearbyTarget | null => {
+    if (!selectedTargetId) return null;
+    return rawTargets().find(t => t.id === selectedTargetId) ?? null;
+  });
+
+  // Scan data for selected target
+  let selectedScanData = $derived(() => {
+    if (!selectedTargetId) return undefined;
+    return combatStore.getTargetScan(selectedTargetId);
+  });
 </script>
 
 <div class="two-col">
-  <!-- Targets -->
+  <!-- Left: Targets -->
   <Card class="space-card">
     <Content>
       <p class="tab-section-title">Nearby Targets</p>
 
-      {#if nearbyTargets().length > 0}
-        <div class="target-list">
-          {#each nearbyTargets() as target (target.id)}
-            {@const scanData = combatStore.getTargetScan(target.id)}
-            <div class="target-row">
-              <div
-                class="target-item"
-                class:expanded={expandedTarget === target.id}
-                onclick={() => toggleExpand(target.id)}
-                role="button"
-                tabindex="0"
-                onkeydown={(e) => e.key === 'Enter' && toggleExpand(target.id)}
-              >
-                <div class="target-info">
-                  <span class="target-name">
-                    {target.username}
-                    {#if target.in_combat}
-                      <span class="combat-indicator">IN COMBAT</span>
-                    {/if}
-                  </span>
-                  <span class="target-ship mono">{target.ship}</span>
-                </div>
-                <div class="target-actions">
-                  <button
-                    class="action-btn scan-btn"
-                    onclick={(e) => scanTarget(e, target.id, target.username)}
-                    title="Scan {target.username}"
-                  >
-                    <span class="material-icons">radar</span>
-                    SCAN
-                  </button>
-                  <button
-                    class="action-btn attack-btn"
-                    onclick={(e) => attackTarget(e, target.id, target.username)}
-                    title="Attack {target.username}"
-                  >
-                    <span class="material-icons">gps_fixed</span>
-                    ATK
-                  </button>
-                </div>
-              </div>
+      <!-- Filter & Sort controls -->
+      <div class="controls-row">
+        <div class="filter-box">
+          <span class="material-icons filter-icon">search</span>
+          <input
+            type="text"
+            class="filter-input"
+            placeholder="Filter..."
+            bind:value={filterText}
+          />
+        </div>
+        <div class="sort-btns">
+          <button class="sort-btn" class:active={sortBy === 'name'} onclick={() => sortBy = 'name'} title="Sort by name">A-Z</button>
+          <button class="sort-btn" class:active={sortBy === 'ship'} onclick={() => sortBy = 'ship'} title="Sort by ship">SHIP</button>
+          <button class="sort-btn" class:active={sortBy === 'combat'} onclick={() => sortBy = 'combat'} title="Sort by combat status">!</button>
+        </div>
+      </div>
 
-              <!-- Scan detail panel -->
-              {#if expandedTarget === target.id && scanData}
-                <div class="scan-detail">
-                  <p class="scan-detail-title">
-                    <span class="material-icons" style="font-size:14px">info</span>
-                    Scan Result
-                    {#if !scanData.success}
-                      <span class="scan-failed">FAILED</span>
-                    {/if}
-                  </p>
-                  {#if scanData.success}
-                    <div class="scan-grid">
-                      {#if scanData.username}
-                        <span class="scan-label">Name</span>
-                        <span class="scan-value">{scanData.username}</span>
-                      {/if}
-                      {#if scanData.ship_class}
-                        <span class="scan-label">Ship</span>
-                        <span class="scan-value mono">{scanData.ship_class}</span>
-                      {/if}
-                      {#if scanData.hull !== undefined}
-                        <span class="scan-label">Hull</span>
-                        <span class="scan-value hull-val mono">{scanData.hull}</span>
-                      {/if}
-                      {#if scanData.shield !== undefined}
-                        <span class="scan-label">Shield</span>
-                        <span class="scan-value shield-val mono">{scanData.shield}</span>
-                      {/if}
-                      {#if scanData.cloaked !== undefined}
-                        <span class="scan-label">Cloaked</span>
-                        <span class="scan-value">{scanData.cloaked ? 'Yes' : 'No'}</span>
-                      {/if}
-                      {#if scanData.faction_id}
-                        <span class="scan-label">Faction</span>
-                        <span class="scan-value">{scanData.faction_id}</span>
-                      {/if}
-                    </div>
-                    {#if scanData.revealed_info?.length > 0}
-                      <div class="revealed-info">
-                        <span class="scan-label">Revealed:</span>
-                        {#each scanData.revealed_info as info}
-                          <span class="revealed-tag">{info}</span>
-                        {/each}
-                      </div>
-                    {/if}
+      {#if displayTargets().length > 0}
+        <div class="target-list">
+          {#each displayTargets() as target (target.id)}
+            <div
+              class="target-item"
+              class:selected={selectedTargetId === target.id}
+              onclick={() => selectTarget(target.id)}
+              role="button"
+              tabindex="0"
+              onkeydown={(e) => e.key === 'Enter' && selectTarget(target.id)}
+            >
+              <div class="target-info">
+                <span class="target-name">
+                  {target.username}
+                  {#if target.in_combat}
+                    <span class="combat-indicator">IN COMBAT</span>
                   {/if}
-                </div>
-              {/if}
+                </span>
+                <span class="target-ship mono">{target.ship}</span>
+              </div>
+              <div class="target-actions">
+                <button
+                  class="action-btn scan-btn"
+                  onclick={(e) => scanTarget(e, target.id, target.username)}
+                  title="Scan {target.username}"
+                >
+                  <span class="material-icons">radar</span>
+                  SCAN
+                </button>
+                <button
+                  class="action-btn attack-btn"
+                  onclick={(e) => attackTarget(e, target.id, target.username)}
+                  title="Attack {target.username}"
+                >
+                  <span class="material-icons">gps_fixed</span>
+                  ATK
+                </button>
+              </div>
             </div>
           {/each}
         </div>
+      {:else if rawTargets().length > 0}
+        <p class="empty-hint">No targets match filter.</p>
       {:else}
         <p class="empty-hint">No nearby targets detected.</p>
       {/if}
@@ -154,22 +177,20 @@
         <p class="tab-section-title" style="margin-top:12px">Drones</p>
         <div class="target-list">
           {#each combatStore.scanResult.drones as drone}
-            <div class="target-row">
-              <div class="target-item">
-                <div class="target-info">
-                  <span class="target-name">{drone.owner_name}'s {drone.type}</span>
-                  <span class="hp-bar-text mono">{drone.hull}/{drone.max_hull} HP</span>
-                </div>
-                <div class="target-actions">
-                  <button
-                    class="action-btn attack-btn"
-                    onclick={() => attackTarget(drone.id, `${drone.owner_name}'s ${drone.type}`)}
-                    title="Attack drone"
-                  >
-                    <span class="material-icons">gps_fixed</span>
-                    ATK
-                  </button>
-                </div>
+            <div class="target-item">
+              <div class="target-info">
+                <span class="target-name">{drone.owner_name}'s {drone.type}</span>
+                <span class="hp-bar-text mono">{drone.hull}/{drone.max_hull} HP</span>
+              </div>
+              <div class="target-actions">
+                <button
+                  class="action-btn attack-btn"
+                  onclick={(e) => attackTarget(e, drone.id, `${drone.owner_name}'s ${drone.type}`)}
+                  title="Attack drone"
+                >
+                  <span class="material-icons">gps_fixed</span>
+                  ATK
+                </button>
               </div>
             </div>
           {/each}
@@ -190,9 +211,104 @@
     </Content>
   </Card>
 
-  <!-- Combat Log -->
+  <!-- Right: Target Detail + Combat Log -->
   <Card class="space-card">
     <Content>
+      <!-- Selected Target Detail -->
+      {#if selectedTarget()}
+        {@const tgt = selectedTarget()}
+        {@const scan = selectedScanData}
+        <div class="detail-section">
+          <div class="detail-header">
+            <span class="material-icons" style="font-size:18px;color:#4fc3f7">person</span>
+            <span class="detail-title">{tgt.username}</span>
+            {#if tgt.in_combat}
+              <span class="combat-indicator">IN COMBAT</span>
+            {/if}
+          </div>
+          <div class="detail-grid">
+            <span class="detail-label">Ship</span>
+            <span class="detail-value mono">{tgt.ship}</span>
+            <span class="detail-label">ID</span>
+            <span class="detail-value mono id-val">{tgt.id.slice(0, 12)}...</span>
+          </div>
+
+          <div class="detail-actions">
+            <button class="action-btn-lg scan-btn" onclick={(e) => scanTarget(e, tgt.id, tgt.username)}>
+              <span class="material-icons">radar</span> Scan
+            </button>
+            <button class="action-btn-lg attack-btn" onclick={(e) => attackTarget(e, tgt.id, tgt.username)}>
+              <span class="material-icons">gps_fixed</span> Attack
+            </button>
+          </div>
+
+          <!-- Scan Result -->
+          {#if scan}
+            <div class="scan-result-panel" class:scan-failed={!scan.success}>
+              <div class="scan-result-header">
+                <span class="material-icons" style="font-size:14px">{scan.success ? 'check_circle' : 'cancel'}</span>
+                <span>Scan Result</span>
+                {#if scan.tick}
+                  <span class="scan-tick mono">T{scan.tick}</span>
+                {/if}
+                {#if !scan.success}
+                  <span class="scan-failed-badge">FAILED</span>
+                {/if}
+              </div>
+
+              {#if scan.success}
+                <div class="scan-grid">
+                  {#if scan.username}
+                    <span class="scan-label">Name</span>
+                    <span class="scan-value">{scan.username}</span>
+                  {/if}
+                  {#if scan.ship_class}
+                    <span class="scan-label">Ship</span>
+                    <span class="scan-value mono">{scan.ship_class}</span>
+                  {/if}
+                  {#if scan.hull !== undefined}
+                    <span class="scan-label">Hull</span>
+                    <span class="scan-value hull-val mono">{scan.hull}</span>
+                  {/if}
+                  {#if scan.shield !== undefined}
+                    <span class="scan-label">Shield</span>
+                    <span class="scan-value shield-val mono">{scan.shield}</span>
+                  {/if}
+                  {#if scan.cloaked !== undefined}
+                    <span class="scan-label">Cloaked</span>
+                    <span class="scan-value">{scan.cloaked ? 'Yes' : 'No'}</span>
+                  {/if}
+                  {#if scan.faction_id}
+                    <span class="scan-label">Faction</span>
+                    <span class="scan-value">{scan.faction_id}</span>
+                  {/if}
+                </div>
+                {#if scan.revealed_info?.length}
+                  <div class="revealed-info">
+                    <span class="scan-label">Revealed:</span>
+                    {#each scan.revealed_info as info}
+                      <span class="revealed-tag">{info}</span>
+                    {/each}
+                  </div>
+                {/if}
+              {:else}
+                <p class="scan-fail-msg">
+                  Scan could not penetrate target defenses. Try improving your scanner module.
+                </p>
+              {/if}
+            </div>
+          {/if}
+        </div>
+        <div class="section-divider"></div>
+      {:else}
+        <div class="no-selection">
+          <span class="material-icons" style="font-size:24px;color:#263238">ads_click</span>
+          <p>Select a target to view details</p>
+        </div>
+        <div class="section-divider"></div>
+      {/if}
+
+      <!-- Combat Log -->
       <p class="tab-section-title">Combat Log</p>
       {#if combatStore.inCombat}
         <div class="in-combat-badge">IN COMBAT</div>
@@ -220,6 +336,64 @@
 </div>
 
 <style>
+  /* ---- Controls ---- */
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .filter-box {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    padding: 0 6px;
+  }
+
+  .filter-icon {
+    font-size: 14px;
+    color: #546e7a;
+  }
+
+  .filter-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #b0bec5;
+    font-size: 0.72rem;
+    font-family: 'Roboto Mono', monospace;
+    padding: 4px 6px;
+  }
+
+  .filter-input::placeholder { color: #37474f; }
+
+  .sort-btns {
+    display: flex;
+    gap: 2px;
+  }
+
+  .sort-btn {
+    padding: 3px 6px;
+    font-size: 0.58rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 600;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 2px;
+    color: #546e7a;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .sort-btn:hover { color: #b0bec5; border-color: rgba(255,255,255,0.15); }
+  .sort-btn.active { color: #4fc3f7; border-color: rgba(79,195,247,0.4); background: rgba(79,195,247,0.08); }
+
+  /* ---- Target list ---- */
   .empty-hint {
     font-size: 0.75rem;
     color: #263238;
@@ -231,11 +405,6 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-  }
-
-  .target-row {
-    display: flex;
-    flex-direction: column;
   }
 
   .target-item {
@@ -252,7 +421,7 @@
   }
 
   .target-item:hover { background: rgba(255,255,255,0.06); }
-  .target-item.expanded { border-color: rgba(79,195,247,0.4); background: rgba(79,195,247,0.05); }
+  .target-item.selected { border-color: rgba(79,195,247,0.5); background: rgba(79,195,247,0.06); }
 
   .target-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
   .target-name { font-size: 0.8rem; color: #b0bec5; display: flex; align-items: center; gap: 6px; }
@@ -289,52 +458,131 @@
     white-space: nowrap;
   }
 
-  .action-btn .material-icons {
-    font-size: 13px;
-  }
+  .action-btn .material-icons { font-size: 13px; }
 
-  .scan-btn {
-    color: #4fc3f7;
-    border-color: rgba(79,195,247,0.3);
-  }
-  .scan-btn:hover {
-    background: rgba(79,195,247,0.12);
-    border-color: rgba(79,195,247,0.6);
-  }
+  .scan-btn { color: #4fc3f7; border-color: rgba(79,195,247,0.3); }
+  .scan-btn:hover { background: rgba(79,195,247,0.12); border-color: rgba(79,195,247,0.6); }
 
-  .attack-btn {
-    color: #ef5350;
-    border-color: rgba(244,67,54,0.3);
-  }
-  .attack-btn:hover {
-    background: rgba(244,67,54,0.12);
-    border-color: rgba(244,67,54,0.6);
-  }
+  .attack-btn { color: #ef5350; border-color: rgba(244,67,54,0.3); }
+  .attack-btn:hover { background: rgba(244,67,54,0.12); border-color: rgba(244,67,54,0.6); }
 
-  /* Scan detail panel */
-  .scan-detail {
-    margin: 0 4px 4px;
-    padding: 8px 10px;
-    background: rgba(79,195,247,0.04);
-    border: 1px solid rgba(79,195,247,0.15);
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-  }
+  .hp-bar-text { font-size: 0.68rem; color: #4caf50; }
 
-  .scan-detail-title {
+  .wreck-item {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 0.7rem;
-    color: #4fc3f7;
-    margin-bottom: 6px;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+  }
+
+  /* ---- Right panel: Detail ---- */
+  .no-selection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 20px 0;
+  }
+
+  .no-selection p {
+    font-size: 0.72rem;
+    color: #37474f;
+  }
+
+  .detail-section {
+    margin-bottom: 4px;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .detail-title {
+    font-size: 0.95rem;
+    color: #e0e0e0;
     font-weight: 600;
   }
 
-  .scan-failed {
-    color: #f44336;
+  .detail-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    font-size: 0.75rem;
+    margin-bottom: 10px;
+  }
+
+  .detail-label { color: #546e7a; font-size: 0.7rem; }
+  .detail-value { color: #b0bec5; }
+  .id-val { font-size: 0.65rem; color: #455a64; }
+
+  .detail-actions {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .action-btn-lg {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .action-btn-lg .material-icons { font-size: 15px; }
+  .action-btn-lg.scan-btn { color: #4fc3f7; border-color: rgba(79,195,247,0.4); }
+  .action-btn-lg.scan-btn:hover { background: rgba(79,195,247,0.12); }
+  .action-btn-lg.attack-btn { color: #ef5350; border-color: rgba(244,67,54,0.4); }
+  .action-btn-lg.attack-btn:hover { background: rgba(244,67,54,0.12); }
+
+  /* ---- Scan result panel ---- */
+  .scan-result-panel {
+    padding: 8px 10px;
+    background: rgba(79,195,247,0.04);
+    border: 1px solid rgba(79,195,247,0.15);
+    border-radius: 4px;
+  }
+
+  .scan-result-panel.scan-failed {
+    background: rgba(244,67,54,0.04);
+    border-color: rgba(244,67,54,0.2);
+  }
+
+  .scan-result-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: #4fc3f7;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .scan-result-panel.scan-failed .scan-result-header { color: #ef5350; }
+
+  .scan-tick {
     font-size: 0.6rem;
-    background: rgba(244,67,54,0.15);
+    color: #455a64;
+    margin-left: auto;
+  }
+
+  .scan-failed-badge {
+    font-size: 0.6rem;
+    background: rgba(244,67,54,0.2);
+    color: #ef5350;
     padding: 1px 4px;
     border-radius: 2px;
   }
@@ -346,16 +594,8 @@
     font-size: 0.72rem;
   }
 
-  .scan-label {
-    color: #546e7a;
-    font-size: 0.68rem;
-  }
-
-  .scan-value {
-    color: #b0bec5;
-    font-size: 0.72rem;
-  }
-
+  .scan-label { color: #546e7a; font-size: 0.68rem; }
+  .scan-value { color: #b0bec5; font-size: 0.72rem; }
   .hull-val { color: #4caf50; }
   .shield-val { color: #2196f3; }
 
@@ -376,16 +616,18 @@
     font-family: 'Roboto Mono', monospace;
   }
 
-  .hp-bar-text { font-size: 0.68rem; color: #4caf50; }
-
-  .wreck-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    font-size: 0.78rem;
+  .scan-fail-msg {
+    font-size: 0.7rem;
+    color: #78909c;
+    margin: 4px 0 0;
   }
 
+  .section-divider {
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    margin: 10px 0;
+  }
+
+  /* ---- Combat Log ---- */
   .in-combat-badge {
     background: rgba(244,67,54,0.15);
     border: 1px solid rgba(244,67,54,0.4);
@@ -402,7 +644,7 @@
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 
   .combat-log {
-    height: 300px;
+    max-height: 250px;
     overflow-y: auto;
   }
 
