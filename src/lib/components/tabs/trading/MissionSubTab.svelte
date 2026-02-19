@@ -7,17 +7,15 @@
   import { ws } from '$lib/services/websocket';
   import type { Mission } from '$lib/types/game';
 
-  // Auto-load active missions when tab opens
+  // Auto-load: docked → get_missions (chains to get_active_missions)
+  //            undocked → get_active_missions only
   $effect(() => {
     if (uiStore.activeTab.label === 'Trading') {
-      ws.getActiveMissions();
-    }
-  });
-
-  // Auto-load available missions when docked
-  $effect(() => {
-    if (uiStore.activeTab.label === 'Trading' && playerStore.isDocked) {
-      ws.getMissions();
+      if (playerStore.isDocked) {
+        ws.getMissions();
+      } else {
+        ws.getActiveMissions();
+      }
     }
   });
 
@@ -57,17 +55,19 @@
     actionQueueStore.enqueue(`Abandon: ${m.title}`, () => ws.abandonMission(id));
   }
 
-  function refreshAvailable() {
-    ws.getMissions();
+  function refreshMissions() {
+    if (playerStore.isDocked) {
+      ws.getMissions();
+    } else {
+      ws.getActiveMissions();
+    }
   }
 
-  function refreshActive() {
-    ws.getActiveMissions();
-  }
-
-  function objectiveProgress(obj: { current: number; target: number }): number {
-    if (obj.target <= 0) return 100;
-    return Math.min(100, Math.round((obj.current / obj.target) * 100));
+  function objectiveProgress(obj: { current?: number; target?: number }): number {
+    const target = obj.target ?? 1;
+    const current = obj.current ?? 0;
+    if (target <= 0) return 100;
+    return Math.min(100, Math.round((current / target) * 100));
   }
 
   function difficultyLabel(d: number): string {
@@ -83,6 +83,17 @@
     if (d <= 5) return 'diff-hard';
     return 'diff-extreme';
   }
+
+  function getGiverDisplay(m: Mission): string {
+    if (m.giver) {
+      return m.giver.title ? `${m.giver.name} — ${m.giver.title}` : m.giver.name;
+    }
+    return m.giver_name ?? '';
+  }
+
+  function getOfferDialog(m: Mission): string {
+    return m.dialog?.offer ?? m.giver_dialog ?? '';
+  }
 </script>
 
 <div class="mission-layout">
@@ -91,10 +102,10 @@
     <Content>
       <div class="section-header">
         <p class="tab-section-title">Active Missions</p>
-        <button class="refresh-btn" onclick={refreshActive} title="Refresh active missions">
+        <button class="refresh-btn" onclick={refreshMissions} title="Refresh missions">
           <span class="material-icons" style="font-size:14px">refresh</span>
         </button>
-        <span class="mission-count">{missionStore.active.length}/5</span>
+        <span class="mission-count">{missionStore.active.length}/{missionStore.maxMissions}</span>
       </div>
 
       {#if missionStore.loadingActive}
@@ -124,15 +135,18 @@
                     <div class="objectives">
                       <p class="obj-title">Objectives</p>
                       {#each mission.objectives as obj}
+                        {@const hasProgress = obj.current != null && obj.target != null}
                         <div class="objective-row">
                           <span class="material-icons obj-icon" style="font-size:12px" class:obj-done={obj.complete}>
                             {obj.complete ? 'check_circle' : 'radio_button_unchecked'}
                           </span>
                           <span class="obj-text" class:obj-done={obj.complete}>{obj.description}</span>
-                          <span class="obj-progress mono">{obj.current}/{obj.target}</span>
-                          <div class="obj-bar">
-                            <div class="obj-bar-fill" style="width:{objectiveProgress(obj)}%"></div>
-                          </div>
+                          {#if hasProgress}
+                            <span class="obj-progress mono">{obj.current}/{obj.target}</span>
+                            <div class="obj-bar">
+                              <div class="obj-bar-fill" style="width:{objectiveProgress(obj)}%"></div>
+                            </div>
+                          {/if}
                         </div>
                       {/each}
                     </div>
@@ -149,6 +163,13 @@
                     <p class="mission-meta">
                       <span class="material-icons" style="font-size:12px">inventory_2</span>
                       Rewards: {mission.reward_items.map(i => `${i.quantity}x ${i.name ?? i.item_id}`).join(', ')}
+                    </p>
+                  {/if}
+
+                  {#if mission.reward_xp}
+                    <p class="mission-meta">
+                      <span class="material-icons" style="font-size:12px">trending_up</span>
+                      XP: {Object.entries(mission.reward_xp).map(([k, v]) => `${k}: +${v}`).join(', ')}
                     </p>
                   {/if}
 
@@ -178,10 +199,8 @@
     <Content>
       <div class="section-header">
         <p class="tab-section-title">Available Missions</p>
-        {#if playerStore.isDocked}
-          <button class="refresh-btn" onclick={refreshAvailable} title="Refresh available missions">
-            <span class="material-icons" style="font-size:14px">refresh</span>
-          </button>
+        {#if missionStore.baseName}
+          <span class="station-label mono">{missionStore.baseName}</span>
         {/if}
       </div>
 
@@ -204,6 +223,9 @@
                   <span class="mission-type-badge">{mission.type}</span>
                 {/if}
                 <span class="difficulty-badge {difficultyClass(mission.difficulty)}">{difficultyLabel(mission.difficulty)}</span>
+                {#if mission.repeatable}
+                  <span class="repeatable-badge">RPT</span>
+                {/if}
                 <span class="mission-reward mono">₡{mission.reward_credits.toLocaleString()}</span>
               </div>
 
@@ -211,8 +233,15 @@
                 <div class="mission-detail">
                   <p class="mission-desc">{mission.description}</p>
 
-                  {#if mission.giver_dialog}
-                    <p class="mission-dialog">"{mission.giver_dialog}"</p>
+                  {#if getGiverDisplay(mission)}
+                    <p class="mission-giver">
+                      <span class="material-icons" style="font-size:12px">person</span>
+                      {getGiverDisplay(mission)}
+                    </p>
+                  {/if}
+
+                  {#if getOfferDialog(mission)}
+                    <p class="mission-dialog">"{getOfferDialog(mission)}"</p>
                   {/if}
 
                   {#if mission.objectives && mission.objectives.length > 0}
@@ -222,23 +251,15 @@
                         <div class="objective-row">
                           <span class="material-icons obj-icon" style="font-size:12px">radio_button_unchecked</span>
                           <span class="obj-text">{obj.description}</span>
-                          <span class="obj-progress mono">0/{obj.target}</span>
                         </div>
                       {/each}
                     </div>
                   {/if}
 
-                  {#if mission.destination_name}
+                  {#if mission.reward_xp}
                     <p class="mission-meta">
-                      <span class="material-icons" style="font-size:12px">place</span>
-                      {mission.destination_name}
-                    </p>
-                  {/if}
-
-                  {#if mission.time_limit}
-                    <p class="mission-meta">
-                      <span class="material-icons" style="font-size:12px">schedule</span>
-                      Time limit: {Math.floor(mission.time_limit / 60)}min
+                      <span class="material-icons" style="font-size:12px">trending_up</span>
+                      XP: {Object.entries(mission.reward_xp).map(([k, v]) => `${k}: +${v}`).join(', ')}
                     </p>
                   {/if}
 
@@ -249,10 +270,10 @@
                     </p>
                   {/if}
 
-                  {#if mission.reward_xp}
+                  {#if mission.chain_next}
                     <p class="mission-meta">
-                      <span class="material-icons" style="font-size:12px">trending_up</span>
-                      XP: {Object.entries(mission.reward_xp).map(([k, v]) => `${k}: +${v}`).join(', ')}
+                      <span class="material-icons" style="font-size:12px">link</span>
+                      Chain mission (continues after completion)
                     </p>
                   {/if}
 
@@ -289,6 +310,11 @@
 
   .section-header .tab-section-title {
     margin: 0;
+  }
+
+  .station-label {
+    font-size: 0.65rem;
+    color: #546e7a;
   }
 
   .refresh-btn {
@@ -380,11 +406,24 @@
   .diff-hard { color: #f44336; background: rgba(244,67,54,0.1); border: 1px solid rgba(244,67,54,0.25); }
   .diff-extreme { color: #e040fb; background: rgba(224,64,251,0.1); border: 1px solid rgba(224,64,251,0.25); }
 
+  .repeatable-badge {
+    font-size: 0.5rem;
+    font-family: 'Roboto Mono', monospace;
+    color: #ffd700;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    border-radius: 2px;
+    padding: 0 3px;
+    flex-shrink: 0;
+  }
+
   .mission-reward {
     font-size: 0.7rem;
     color: #ffd700;
     flex-shrink: 0;
   }
+
+  .mono { font-family: 'Roboto Mono', monospace; }
 
   .mission-detail {
     padding: 8px 0 4px 20px;
@@ -397,6 +436,15 @@
     line-height: 1.4;
   }
 
+  .mission-giver {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.65rem;
+    color: #4fc3f7;
+    margin-bottom: 6px;
+  }
+
   .mission-dialog {
     font-size: 0.68rem;
     color: #90a4ae;
@@ -404,6 +452,7 @@
     margin-bottom: 8px;
     padding-left: 8px;
     border-left: 2px solid rgba(79, 195, 247, 0.2);
+    line-height: 1.5;
   }
 
   .objectives {

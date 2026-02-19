@@ -576,30 +576,47 @@ class WebSocketService {
           break;
         }
         // Mission responses
-        if (pl.action === 'get_missions' && (pl as Record<string, unknown>).missions) {
-          const missions = (pl as Record<string, unknown>).missions as import('$lib/types/game').Mission[];
-          missionStore.setAvailable(missions);
-          break;
-        }
-        if (pl.action === 'get_active_missions' && (pl as Record<string, unknown>).missions) {
-          const missions = (pl as Record<string, unknown>).missions as import('$lib/types/game').Mission[];
-          missionStore.setActive(missions);
-          break;
+        // get_missions: { missions: [...], base_name, base_id }
+        {
+          const raw = msg.payload as Record<string, unknown>;
+          if (raw.base_name && Array.isArray(raw.missions)) {
+            missionStore.setAvailable(raw.missions as unknown[], raw.base_name as string, raw.base_id as string);
+            // Chain: get_missions ok → get_active_missions (avoid concurrent queries)
+            this.getActiveMissions();
+            break;
+          }
+          // get_active_missions: { missions: [...] | null, total_count, max_missions }
+          if (raw.max_missions !== undefined) {
+            missionStore.setActive(raw.missions as unknown[] | null, raw.max_missions as number);
+            break;
+          }
         }
         if (pl.action === 'accept_mission') {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission accepted' });
-          this.getActiveMissions();
-          if (playerStore.isDocked) this.getMissions();
+          // Chain: refresh available first, then active follows automatically
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
           break;
         }
         if (pl.action === 'complete_mission') {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission completed!' });
-          this.getActiveMissions();
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
           break;
         }
         if (pl.action === 'abandon_mission') {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission abandoned' });
-          this.getActiveMissions();
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
           break;
         }
         if (pl.action === 'decline_mission') {
