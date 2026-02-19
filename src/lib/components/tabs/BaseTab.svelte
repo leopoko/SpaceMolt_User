@@ -5,6 +5,8 @@
   import LinearProgress from '@smui/linear-progress';
   import { baseStore } from '$lib/stores/base.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
+  import { shipStore } from '$lib/stores/ship.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 
@@ -14,18 +16,62 @@
   let withdrawQty = $state(1);
   let creditAmount = $state(0);
   let creditMode = $state<'deposit' | 'withdraw'>('deposit');
+  let showDepositSuggestions = $state(false);
+  let showWithdrawSuggestions = $state(false);
 
-  // Auto-load station info and storage when docked and tab is shown
+  // Auto-refresh when Base tab is selected
   $effect(() => {
-    if (playerStore.isDocked) {
-      if (!baseStore.currentBase) ws.getBase();
-      if (!baseStore.storageData) ws.viewStorage();
+    if (uiStore.activeTab.label === 'Base' && playerStore.isDocked) {
+      ws.getBase();
+      ws.viewStorage();
     }
   });
 
   function loadStorage() {
     ws.getBase();
     ws.viewStorage();
+  }
+
+  /** Unique item suggestions from both storage and cargo */
+  let allItemSuggestions = $derived.by(() => {
+    const map = new Map<string, string>(); // item_id -> display name
+    for (const item of baseStore.items) {
+      map.set(item.item_id, item.name ?? item.item_id);
+    }
+    for (const item of shipStore.cargo) {
+      if (!map.has(item.item_id)) {
+        map.set(item.item_id, item.name ?? item.item_id);
+      }
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  });
+
+  let filteredDepositSuggestions = $derived(
+    depositItemId.trim()
+      ? allItemSuggestions.filter(s =>
+          s.id.toLowerCase().includes(depositItemId.toLowerCase()) ||
+          s.name.toLowerCase().includes(depositItemId.toLowerCase())
+        )
+      : allItemSuggestions
+  );
+
+  let filteredWithdrawSuggestions = $derived(
+    withdrawItemId.trim()
+      ? allItemSuggestions.filter(s =>
+          s.id.toLowerCase().includes(withdrawItemId.toLowerCase()) ||
+          s.name.toLowerCase().includes(withdrawItemId.toLowerCase())
+        )
+      : allItemSuggestions
+  );
+
+  function selectDepositItem(id: string) {
+    depositItemId = id;
+    showDepositSuggestions = false;
+  }
+
+  function selectWithdrawItem(id: string) {
+    withdrawItemId = id;
+    showWithdrawSuggestions = false;
   }
 
   function doDepositItem() {
@@ -149,7 +195,7 @@
       </Content>
     </Card>
 
-    <!-- Storage items -->
+    <!-- Storage & Cargo items -->
     <Card class="space-card">
       <Content>
         <p class="tab-section-title">Stored Items</p>
@@ -179,10 +225,53 @@
           <p class="empty-hint">Loading storage...</p>
         {/if}
 
+        {#if shipStore.cargo.length > 0}
+          <p class="tab-section-title" style="margin-top:12px">Cargo (Ship)</p>
+          <table class="storage-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="num">Qty</th>
+                <th class="num">Volume</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each shipStore.cargo as item}
+                <tr class="cargo-row">
+                  <td>{item.name ?? item.item_id}</td>
+                  <td class="num mono">{item.quantity}</td>
+                  <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+
         <!-- Deposit/Withdraw Items -->
         <p class="tab-section-title" style="margin-top:16px">Move Items</p>
         <div class="transfer-form">
-          <Textfield bind:value={depositItemId} label="Item ID" variant="outlined" style="width:100%" />
+          <div class="autocomplete-wrapper">
+            <Textfield
+              bind:value={depositItemId}
+              label="Item ID"
+              variant="outlined"
+              style="width:100%"
+              onfocus={() => (showDepositSuggestions = true)}
+              onblur={() => setTimeout(() => (showDepositSuggestions = false), 150)}
+            />
+            {#if showDepositSuggestions && filteredDepositSuggestions.length > 0}
+              <ul class="suggestion-list">
+                {#each filteredDepositSuggestions as s}
+                  <li>
+                    <button class="suggestion-item" onmousedown={() => selectDepositItem(s.id)}>
+                      <span class="sugg-name">{s.name}</span>
+                      <span class="sugg-id mono">{s.id}</span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
           <div class="qty-row">
             <Textfield bind:value={depositQty} type="number" label="Qty" variant="outlined" style="width:45%" input$min="1" />
           </div>
@@ -359,6 +448,47 @@
   .num { text-align: right; }
   .mono { font-family: 'Roboto Mono', monospace; }
   .credits { color: #ffd700; }
+
+  .cargo-row td { color: #78909c; }
+
+  .autocomplete-wrapper { position: relative; width: 100%; }
+
+  .suggestion-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: #0d1525;
+    border: 1px solid rgba(79,195,247,0.25);
+    border-radius: 4px;
+    max-height: 160px;
+    overflow-y: auto;
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+  }
+
+  .suggestion-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 6px 8px;
+    background: none;
+    border: none;
+    color: #cfd8dc;
+    font-size: 0.72rem;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .suggestion-item:hover {
+    background: rgba(79,195,247,0.12);
+  }
+
+  .sugg-name { color: #b0bec5; }
+  .sugg-id { font-size: 0.62rem; color: #546e7a; }
 
   .transfer-form { display: flex; flex-direction: column; gap: 8px; }
   .qty-row { display: flex; gap: 8px; }
