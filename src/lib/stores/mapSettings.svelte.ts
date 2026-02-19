@@ -28,21 +28,15 @@ function save(data: MapSettingsData) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
 }
 
-class MapSettingsStore {
-  rockDensity = $state(DEFAULTS.rockDensity);
-  showTravelAnim = $state(DEFAULTS.showTravelAnim);
-  showPlayerWaves = $state(DEFAULTS.showPlayerWaves);
-  showOrbitLines = $state(DEFAULTS.showOrbitLines);
-  showGrid = $state(DEFAULTS.showGrid);
+// Load once at module init — $state() gets the persisted value directly
+const _init = load();
 
-  constructor() {
-    const d = load();
-    this.rockDensity = d.rockDensity;
-    this.showTravelAnim = d.showTravelAnim;
-    this.showPlayerWaves = d.showPlayerWaves;
-    this.showOrbitLines = d.showOrbitLines;
-    this.showGrid = d.showGrid;
-  }
+class MapSettingsStore {
+  rockDensity = $state(_init.rockDensity);
+  showTravelAnim = $state(_init.showTravelAnim);
+  showPlayerWaves = $state(_init.showPlayerWaves);
+  showOrbitLines = $state(_init.showOrbitLines);
+  showGrid = $state(_init.showGrid);
 
   private persist() {
     save({
