@@ -526,6 +526,8 @@ class WebSocketService {
             name: rp.name as string,
             type: rp.type as string,
             player_count: (rp.online as number) ?? (rp.player_count as number) ?? 0,
+            position: rp.position as { x: number; y: number } | undefined,
+            online: (rp.online as number) ?? 0,
             base: rp.has_base ? {
               id: (rp.base_id as string) ?? '',
               name: (rp.base_name as string) ?? '',

@@ -59,7 +59,7 @@
   });
 </script>
 
-<div class="two-col">
+<div class="nav-grid">
   <!-- Current System Info + Points of Interest -->
   <Card class="space-card">
     <Content>
@@ -160,65 +160,86 @@
     </Content>
   </Card>
 
-  <!-- Jump Destinations -->
-  <Card class="space-card">
-    <Content>
-      <p class="tab-section-title">Jump Destinations</p>
-      {#if systemStore.connections.length > 0}
-        <div class="connection-list">
-          {#each systemStore.connections as conn}
-            {@const csec = secDisplay(conn.security_level)}
-            <div class="conn-item">
-              <div class="conn-info">
-                <span class="conn-name">{conn.system_name ?? '—'}</span>
-                {#if conn.security_level != null}
-                  <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
-                {/if}
-                {#if conn.jump_cost != null}
-                  <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
-                {/if}
-                {#if conn.distance != null}
-                  <span class="conn-cost mono">Distance: {conn.distance}</span>
-                {/if}
-              </div>
-              <Button
-                variant="outlined"
-                dense
-                disabled={systemStore.travel.in_progress}
-                onclick={() => doJump(conn.system_id, conn.system_name)}
-              >
-                <Label>Jump</Label>
-              </Button>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="empty-hint">No connections available</p>
-      {/if}
-
-      {#if systemStore.travel.in_progress}
-        <div class="traveling-notice">
-          ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
-          {#if systemStore.travel.arrival_tick !== null}
-            <br/>ETA: Tick {systemStore.travel.arrival_tick}
-          {/if}
-        </div>
-      {/if}
-    </Content>
-  </Card>
-
-  <!-- System Map -->
-  {#if systemStore.data && systemStore.pois.length > 0}
-    <Card class="space-card map-card">
+  <!-- Right column: Jump Destinations + System Map -->
+  <div class="right-col">
+    <Card class="space-card">
       <Content>
-        <p class="tab-section-title">System Map</p>
-        <SystemMap pois={systemStore.pois} />
+        <p class="tab-section-title">Jump Destinations</p>
+        {#if systemStore.connections.length > 0}
+          <div class="connection-list">
+            {#each systemStore.connections as conn}
+              {@const csec = secDisplay(conn.security_level)}
+              <div class="conn-item">
+                <div class="conn-info">
+                  <span class="conn-name">{conn.system_name ?? '—'}</span>
+                  {#if conn.security_level != null}
+                    <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
+                  {/if}
+                  {#if conn.jump_cost != null}
+                    <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
+                  {/if}
+                  {#if conn.distance != null}
+                    <span class="conn-cost mono">Distance: {conn.distance}</span>
+                  {/if}
+                </div>
+                <Button
+                  variant="outlined"
+                  dense
+                  disabled={systemStore.travel.in_progress}
+                  onclick={() => doJump(conn.system_id, conn.system_name)}
+                >
+                  <Label>Jump</Label>
+                </Button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="empty-hint">No connections available</p>
+        {/if}
+
+        {#if systemStore.travel.in_progress}
+          <div class="traveling-notice">
+            ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
+            {#if systemStore.travel.arrival_tick !== null}
+              <br/>ETA: Tick {systemStore.travel.arrival_tick}
+            {/if}
+          </div>
+        {/if}
       </Content>
     </Card>
-  {/if}
+
+    <!-- System Map -->
+    {#if systemStore.data && systemStore.pois.length > 0}
+      <Card class="space-card map-card">
+        <Content>
+          <p class="tab-section-title">System Map</p>
+          <SystemMap pois={systemStore.pois} />
+        </Content>
+      </Card>
+    {/if}
+  </div>
 </div>
 
 <style>
+  .nav-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  @media (max-width: 600px) {
+    .nav-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   .section-head {
     display: flex;
     align-items: center;
@@ -475,7 +496,8 @@
   /* ---- System Map ---- */
 
   :global(.map-card) {
-    grid-column: 2;
+    flex: 1;
+    min-height: 0;
   }
 
   @keyframes pulse {

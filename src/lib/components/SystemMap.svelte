@@ -254,7 +254,6 @@
   .system-map-container {
     width: 100%;
     aspect-ratio: 1 / 1;
-    max-height: 400px;
     background: radial-gradient(ellipse at center, rgba(13,21,37,0.9) 0%, rgba(6,10,16,0.95) 100%);
     border: 1px solid rgba(79,195,247,0.12);
     border-radius: 6px;
