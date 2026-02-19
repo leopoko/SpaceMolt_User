@@ -391,8 +391,56 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ message?: string }>(msg);
-        if (pl.message) {
+        const pl = p<{ action?: string; message?: string; system?: Record<string, unknown>; poi?: Record<string, unknown> }>(msg);
+        if (pl.action === 'get_system' && pl.system) {
+          const raw = pl.system as Record<string, unknown>;
+          // Normalize POIs: server sends online/has_base/base_id/base_name
+          const rawPois = (raw.pois as Array<Record<string, unknown>>) ?? [];
+          const pois = rawPois.map(rp => ({
+            id: rp.id as string,
+            name: rp.name as string,
+            type: rp.type as string,
+            player_count: (rp.online as number) ?? (rp.player_count as number) ?? 0,
+            base: rp.has_base ? {
+              id: (rp.base_id as string) ?? '',
+              name: (rp.base_name as string) ?? '',
+            } : null,
+            has_base: rp.has_base ?? false,
+            base_id: rp.base_id ?? null,
+            base_name: rp.base_name ?? null,
+          }));
+          // Normalize connections: server sends name/distance
+          const rawConns = (raw.connections as Array<Record<string, unknown>>) ?? [];
+          const connections = rawConns.map(rc => ({
+            system_id: rc.system_id as string,
+            system_name: (rc.name as string) ?? (rc.system_name as string) ?? '—',
+            distance: (rc.distance as number) ?? null,
+            security_level: rc.security_level ?? null,
+            jump_cost: rc.jump_cost ?? null,
+          }));
+          // Map security_status string to security_level enum
+          const secStr = ((raw.security_status as string) ?? '').toLowerCase();
+          let security_level: string = raw.security_level as string ?? 'null';
+          if (secStr.includes('maximum') || secStr.includes('high')) security_level = 'high';
+          else if (secStr.includes('medium') || secStr.includes('moderate')) security_level = 'medium';
+          else if (secStr.includes('low') || secStr.includes('dangerous')) security_level = 'low';
+          else if (secStr.includes('unregulated') || secStr.includes('lawless')) security_level = 'null';
+
+          systemStore.update({
+            id: raw.id as string,
+            name: raw.name as string,
+            description: (raw.description as string) ?? '',
+            security_level,
+            security_status: raw.security_status as string,
+            pois,
+            connections,
+          } as never);
+
+          // Also update currentPoi if provided
+          if (pl.poi) {
+            systemStore.currentPoi = pl.poi as never;
+          }
+        } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
         }
         break;
@@ -441,7 +489,7 @@ class WebSocketService {
 
   travel(destinationId: string) {
     systemStore.setTravel({ in_progress: true, destination_id: destinationId, type: 'travel' });
-    this.send({ type: 'travel', payload: { destination: destinationId } });
+    this.send({ type: 'travel', payload: { target_poi: destinationId } });
   }
 
   jump(systemId: string, systemName?: string) {

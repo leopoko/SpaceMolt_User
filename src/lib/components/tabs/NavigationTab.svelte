@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Button, { Label } from '@smui/button';
   import Card, { Content } from '@smui/card';
   import { systemStore } from '$lib/stores/system.svelte';
@@ -16,8 +17,9 @@
   };
 
   const poiIcons: Record<string, string> = {
-    station: 'home', asteroid: 'lens', gate: 'transit_enterexit',
-    wreck: 'broken_image', planet: 'public', anomaly: 'help_outline'
+    station: 'home', asteroid: 'lens', asteroid_belt: 'lens', gate: 'transit_enterexit',
+    wreck: 'broken_image', planet: 'public', anomaly: 'help_outline',
+    sun: 'wb_sunny', nebula: 'cloud', gas_cloud: 'cloud_queue', ice_field: 'ac_unit'
   };
 
   function secDisplay(level: string | null | undefined): { color: string; label: string } {
@@ -47,6 +49,11 @@
   function refresh() {
     ws.getSystem();
   }
+
+  // Fetch system info when NavigationTab mounts
+  onMount(() => {
+    ws.getSystem();
+  });
 </script>
 
 <div class="two-col">
@@ -62,7 +69,7 @@
         <h2 class="system-name">{systemStore.name}</h2>
         {@const sys = secDisplay(systemStore.securityLevel)}
         <div class="sec-badge" style="color:{sys.color}">
-          Security: {sys.label}
+          Security: {systemStore.securityStatus ?? sys.label}
         </div>
         {#if systemStore.data.description}
           <p class="sys-desc">{systemStore.data.description}</p>
@@ -81,10 +88,12 @@
                   <div class="poi-info">
                     <span class="poi-name">
                       {poi.name}
-                      {#if isHere}<span class="here-chip">DOCKED</span>{/if}
+                      {#if isHere && playerStore.isDocked}<span class="here-chip">DOCKED</span>
+                      {:else if isHere}<span class="here-chip here-chip-active">HERE</span>
+                      {/if}
                       {#if isTravDest}<span class="dest-chip">▶</span>{/if}
                     </span>
-                    <span class="poi-sub">{poi.type} · {poi.player_count} players</span>
+                    <span class="poi-sub">{poi.type} · {poi.player_count ?? poi.online ?? 0} online</span>
                   </div>
                 </div>
                 <div class="poi-btns">
@@ -154,9 +163,14 @@
             <div class="conn-item">
               <div class="conn-info">
                 <span class="conn-name">{conn.system_name ?? '—'}</span>
-                <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
+                {#if conn.security_level != null}
+                  <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
+                {/if}
                 {#if conn.jump_cost != null}
                   <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
+                {/if}
+                {#if conn.distance != null}
+                  <span class="conn-cost mono">Distance: {conn.distance}</span>
                 {/if}
               </div>
               <Button
@@ -303,7 +317,7 @@
     color: #546e7a;
   }
 
-  /* "DOCKED" badge shown next to the POI name */
+  /* Badge shown next to the POI name */
   .here-chip {
     font-size: 0.58rem;
     font-family: 'Roboto Mono', monospace;
@@ -314,6 +328,13 @@
     border-radius: 3px;
     padding: 0 4px;
     letter-spacing: 0.05em;
+  }
+
+  /* "HERE" badge (at POI but not docked) – cyan to distinguish from green DOCKED */
+  .here-chip-active {
+    color: #4fc3f7;
+    background: rgba(79, 195, 247, 0.15);
+    border-color: rgba(79, 195, 247, 0.4);
   }
 
   /* Arrow shown when this POI is the active travel destination */

@@ -16,6 +16,7 @@ class SystemStore {
 
   get name(): string { return this.data?.name ?? 'Unknown'; }
   get securityLevel() { return this.data?.security_level ?? 'null'; }
+  get securityStatus(): string | null { return this.data?.security_status ?? null; }
   get pois(): POI[] { return this.data?.pois ?? []; }
   get connections() { return this.data?.connections ?? []; }
   get nearbyPlayers(): NearbyPlayer[] {

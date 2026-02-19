@@ -194,6 +194,7 @@ export interface SystemInfo {
   id: string;
   name: string;
   security_level: SecurityLevel;
+  security_status?: string; // descriptive string from server e.g. "Maximum Security (empire capital)"
   description: string;
   pois: POI[];
   connections: SystemConnection[];
@@ -205,16 +206,22 @@ export interface SystemInfo {
 export interface SystemConnection {
   system_id: string;
   system_name: string;
-  security_level: SecurityLevel;
-  jump_cost: number;
+  security_level?: SecurityLevel | null;
+  jump_cost?: number | null;
+  distance?: number | null;
 }
 
 export interface POI {
   id: string;
   name: string;
-  type: 'station' | 'asteroid' | 'gate' | 'wreck' | 'planet' | 'anomaly';
+  type: string; // station, asteroid_belt, gate, wreck, planet, anomaly, sun, nebula, gas_cloud, ice_field, etc.
   base: BaseInfo | null;
   player_count: number;
+  // Server fields (from get_system)
+  has_base?: boolean;
+  base_id?: string | null;
+  base_name?: string | null;
+  online?: number;
 }
 
 // Legacy nearby player (from system_info)
