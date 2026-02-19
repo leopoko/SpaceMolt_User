@@ -9,6 +9,7 @@
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+  import { eventsStore } from '$lib/stores/events.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
 
@@ -73,6 +74,14 @@
       );
     }
 
+    // Sort favorites to top
+    const favIds = craftingStore.favoriteIds;
+    list = [...list].sort((a, b) => {
+      const aFav = favIds.has(a.id) ? 0 : 1;
+      const bFav = favIds.has(b.id) ? 0 : 1;
+      return aFav - bFav;
+    });
+
     return list;
   });
 
@@ -113,6 +122,19 @@
     return recipe.inputs.every(i => hasMaterial(i.item_id, i.quantity * clampedCount));
   }
 
+  /** How many times can we craft this recipe at the given count, based on current materials? */
+  function maxCraftableCount(recipe: Recipe, count: number): number {
+    if (!recipe.inputs?.length) return 0;
+    let max = Infinity;
+    for (const input of recipe.inputs) {
+      const available = getAvailableQty(input.item_id);
+      const perAction = input.quantity * count;
+      if (perAction <= 0) continue;
+      max = Math.min(max, Math.floor(available / perAction));
+    }
+    return max === Infinity ? 0 : max;
+  }
+
   function doCraft() {
     if (!craftingStore.selectedRecipe) return;
     const recipe = craftingStore.selectedRecipe;
@@ -124,6 +146,34 @@
         : `Craft ${recipe.name} ×${count}`;
       actionQueueStore.enqueue(label, () => ws.craft(recipe.id, count));
     }
+  }
+
+  /**
+   * "Craft as many as possible" – enqueues a self-re-enqueueing action.
+   * Each tick it checks materials; if enough, crafts and re-enqueues.
+   * If not enough, stops (no error, just info log). Wastes 1 tick if
+   * nothing could be crafted from the start (as designed).
+   */
+  function doCraftMax() {
+    if (!craftingStore.selectedRecipe) return;
+    const recipe = craftingStore.selectedRecipe;
+    const count = clampedCount;
+
+    const enqueueCraftStep = () => {
+      actionQueueStore.enqueue(`CraftMax ${recipe.name} ×${count}`, () => {
+        // Re-check materials at execution time
+        const available = maxCraftableCount(recipe, count);
+        if (available > 0) {
+          ws.craft(recipe.id, count);
+          // Re-enqueue for next tick
+          enqueueCraftStep();
+        } else {
+          eventsStore.add({ type: 'info', message: `[CraftMax] ${recipe.name}: 素材不足のため終了` });
+        }
+      });
+    };
+
+    enqueueCraftStep();
   }
 
   function loadRecipes() {
@@ -204,11 +254,20 @@
             <div
               class="recipe-item"
               class:selected={craftingStore.selectedRecipe?.id === recipe.id}
+              class:is-fav={craftingStore.isFavorite(recipe.id)}
               onclick={() => craftingStore.selectRecipe(recipe)}
               role="button"
               tabindex="0"
               onkeydown={(e) => e.key === 'Enter' && craftingStore.selectRecipe(recipe)}
             >
+              <button
+                class="fav-btn"
+                class:active={craftingStore.isFavorite(recipe.id)}
+                onclick={(e) => { e.stopPropagation(); craftingStore.toggleFavorite(recipe.id); }}
+                title={craftingStore.isFavorite(recipe.id) ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <span class="material-icons fav-icon">{craftingStore.isFavorite(recipe.id) ? 'star' : 'star_border'}</span>
+              </button>
               <div class="recipe-info">
                 <div class="recipe-top">
                   <span class="recipe-name">{recipe.name}</span>
@@ -243,7 +302,17 @@
     <Content>
       {#if craftingStore.selectedRecipe}
         {@const recipe = craftingStore.selectedRecipe}
-        <p class="tab-section-title">Recipe Detail</p>
+        <div class="detail-head">
+          <p class="tab-section-title">Recipe Detail</p>
+          <button
+            class="fav-btn detail-fav"
+            class:active={craftingStore.isFavorite(recipe.id)}
+            onclick={() => craftingStore.toggleFavorite(recipe.id)}
+            title={craftingStore.isFavorite(recipe.id) ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <span class="material-icons fav-icon">{craftingStore.isFavorite(recipe.id) ? 'star' : 'star_border'}</span>
+          </button>
+        </div>
         <h3 class="recipe-title">{recipe.name}</h3>
         {#if recipe.category}
           <span class="detail-cat">{recipe.category}</span>
@@ -367,6 +436,14 @@
             style="flex:1; --mdc-theme-primary:#7c4dff"
           >
             <Label>⚒ Craft ×{clampedCount}{clampedRepeat > 1 ? ` (${clampedRepeat}回)` : ''}</Label>
+          </Button>
+          <Button
+            variant="outlined"
+            onclick={doCraftMax}
+            disabled={!canCraft(recipe)}
+            style="--mdc-theme-primary:#ff9800"
+          >
+            <Label>⚒ Max</Label>
           </Button>
         </div>
 
@@ -551,6 +628,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  /* Favorite button */
+  .fav-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 4px 0 0;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .fav-icon {
+    font-size: 16px;
+    color: #37474f;
+    transition: color 0.15s;
+  }
+
+  .fav-btn:hover .fav-icon { color: #ffd700; }
+  .fav-btn.active .fav-icon { color: #ffd700; }
+
+  .recipe-item.is-fav {
+    border-left: 2px solid rgba(255,215,0,0.35);
+  }
+
+  /* Detail head */
+  .detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .detail-fav .fav-icon { font-size: 20px; }
 
   .can-craft { color: #4caf50; font-size: 0.9rem; flex-shrink: 0; margin-left: 6px; }
   .cannot-craft { color: #37474f; font-size: 0.9rem; flex-shrink: 0; margin-left: 6px; }
