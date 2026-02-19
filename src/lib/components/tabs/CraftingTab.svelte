@@ -33,16 +33,16 @@
       list = list.filter(r =>
         r.name.toLowerCase().includes(q) ||
         r.id.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q) ||
-        r.inputs.some(i => i.item_id.toLowerCase().includes(q)) ||
-        r.outputs.some(o => o.item_id.toLowerCase().includes(q))
+        (r.description ?? '').toLowerCase().includes(q) ||
+        (r.inputs ?? []).some(i => i.item_id.toLowerCase().includes(q)) ||
+        (r.outputs ?? []).some(o => o.item_id.toLowerCase().includes(q))
       );
     }
 
     // Cargo filter: only recipes where at least one input is in cargo
     if (cargoOnly) {
       list = list.filter(r =>
-        r.inputs.some(i => cargoItemIds.has(i.item_id))
+        (r.inputs ?? []).some(i => cargoItemIds.has(i.item_id))
       );
     }
 
@@ -66,6 +66,7 @@
   }
 
   function canCraft(recipe: Recipe): boolean {
+    if (!recipe.inputs?.length) return false;
     return recipe.inputs.every(i => hasMaterial(i.item_id, i.quantity * craftingStore.craftQuantity));
   }
 
@@ -160,7 +161,7 @@
                   {/if}
                 </div>
                 <span class="recipe-output mono">
-                  → {recipe.outputs.map(o => `${o.quantity}x ${formatItemId(o.item_id)}`).join(', ')}
+                  → {(recipe.outputs ?? []).map(o => `${o.quantity}x ${formatItemId(o.item_id)}`).join(', ')}
                 </span>
               </div>
               {#if canCraft(recipe)}
@@ -191,7 +192,7 @@
 
         <p class="tab-section-title" style="margin-top:12px">Inputs</p>
         <div class="materials">
-          {#each recipe.inputs as input}
+          {#each recipe.inputs ?? [] as input}
             {@const needed = input.quantity * craftingStore.craftQuantity}
             {@const have = hasMaterial(input.item_id, needed)}
             {@const qty = getCargoQty(input.item_id)}
@@ -210,7 +211,7 @@
         </div>
 
         <p class="tab-section-title" style="margin-top:12px">Output</p>
-        {#each recipe.outputs as output}
+        {#each recipe.outputs ?? [] as output}
           <div class="output-row">
             <span class="mat-name">{formatItemId(output.item_id)}</span>
             <span class="mat-qty mono output-qty">
@@ -222,7 +223,7 @@
           </div>
         {/each}
 
-        {#if Object.keys(recipe.required_skills).length > 0}
+        {#if recipe.required_skills && Object.keys(recipe.required_skills).length > 0}
           <p class="tab-section-title" style="margin-top:12px">Required Skills</p>
           <div class="skills-list">
             {#each Object.entries(recipe.required_skills) as [skill, level]}
