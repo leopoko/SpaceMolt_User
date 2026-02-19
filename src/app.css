@@ -94,24 +94,23 @@ body {
   overflow-y: auto;
 }
 
-/* ---- Bottom panel (event log + resize handle + chat + action queue) ---- */
+/* ---- Bottom panel (event log + handles + chat + action queue + map) ---- */
 .bottom-panel {
   display: grid;
-  /* grid-template-columns set dynamically via inline style */
-  gap: 0 8px;
+  /* grid-template-columns and height set dynamically via inline style */
+  gap: 0;
   padding: 8px 16px;
-  height: 200px;
   background: rgba(4, 8, 18, 0.9);
-  border-top: 1px solid var(--space-border);
+  flex-shrink: 0;
 }
 
 @media (max-width: 900px) {
   .bottom-panel {
-    /* Hide ActionQueue; keep EventLog + handle + Chat */
+    /* Collapse to EventLog + handle + Chat only */
     grid-template-columns: 1fr 4px 1fr !important;
-    height: 230px;
   }
-  .bottom-panel > :nth-child(4) {
+  /* Hide AQ handle, AQ, map handle, map */
+  .bottom-panel > :nth-child(n+4) {
     display: none;
   }
 }
@@ -119,12 +118,9 @@ body {
 @media (max-width: 600px) {
   .bottom-panel {
     grid-template-columns: 1fr !important;
-    height: 300px;
   }
-  /* Hide resize handle and chat at very small widths */
-  .bottom-panel > :nth-child(2),
-  .bottom-panel > :nth-child(3),
-  .bottom-panel > :nth-child(4) {
+  /* Show only EventLog */
+  .bottom-panel > :nth-child(n+2) {
     display: none;
   }
 }
