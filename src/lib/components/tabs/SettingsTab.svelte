@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Button, { Label } from '@smui/button';
   import Card, { Content } from '@smui/card';
   import Textfield from '@smui/textfield';
@@ -13,6 +14,22 @@
   let serverUrl = $state(connectionStore.serverUrl);
   let savedUser = $state(authStore.savedUsername);
   let savedPass = $state(authStore.savedPassword);
+
+  // Local state for bind:checked — SMUI Switch renders <button>, native 'change' never fires
+  let darkMode = $state(uiStore.darkMode);
+  let showTravelAnim = $state(mapSettingsStore.showTravelAnim);
+  let showPlayerWaves = $state(mapSettingsStore.showPlayerWaves);
+  let showOrbitLines = $state(mapSettingsStore.showOrbitLines);
+  let showGrid = $state(mapSettingsStore.showGrid);
+  let rockDensity = $state(mapSettingsStore.rockDensity);
+
+  // Sync local → store (untrack prevents cross-field deps through persist())
+  $effect(() => { const v = darkMode;        untrack(() => uiStore.setDarkMode(v)); });
+  $effect(() => { const v = showTravelAnim;  untrack(() => mapSettingsStore.setShowTravelAnim(v)); });
+  $effect(() => { const v = showPlayerWaves; untrack(() => mapSettingsStore.setShowPlayerWaves(v)); });
+  $effect(() => { const v = showOrbitLines;  untrack(() => mapSettingsStore.setShowOrbitLines(v)); });
+  $effect(() => { const v = showGrid;        untrack(() => mapSettingsStore.setShowGrid(v)); });
+  $effect(() => { const v = rockDensity;     untrack(() => mapSettingsStore.setRockDensity(v)); });
 
   function reconnect() {
     ws.disconnect();
@@ -32,10 +49,6 @@
     authStore.clearCredentials();
     savedUser = '';
     savedPass = '';
-  }
-
-  function toggleDarkMode() {
-    uiStore.setDarkMode(!uiStore.darkMode);
   }
 </script>
 
@@ -126,10 +139,7 @@
           <span class="setting-desc">Space-themed dark interface</span>
         </div>
         <FormField>
-          <Switch
-            checked={uiStore.darkMode}
-            onchange={toggleDarkMode}
-          />
+          <Switch bind:checked={darkMode} />
         </FormField>
       </div>
 
@@ -159,12 +169,11 @@
       <div class="setting-row">
         <div class="setting-info">
           <span class="setting-name">Asteroid Density</span>
-          <span class="setting-desc">Rock count per belt ({mapSettingsStore.rockDensity})</span>
+          <span class="setting-desc">Rock count per belt ({rockDensity})</span>
         </div>
         <input
           type="range" min="40" max="640" step="40"
-          value={mapSettingsStore.rockDensity}
-          oninput={(e: Event) => mapSettingsStore.setRockDensity(Number((e.target as HTMLInputElement).value))}
+          bind:value={rockDensity}
           class="range-input"
         />
       </div>
@@ -175,10 +184,7 @@
           <span class="setting-desc">Moving dots along travel path</span>
         </div>
         <FormField>
-          <Switch
-            checked={mapSettingsStore.showTravelAnim}
-            onchange={() => mapSettingsStore.setShowTravelAnim(!mapSettingsStore.showTravelAnim)}
-          />
+          <Switch bind:checked={showTravelAnim} />
         </FormField>
       </div>
 
@@ -188,10 +194,7 @@
           <span class="setting-desc">Ripple effect at POIs with players</span>
         </div>
         <FormField>
-          <Switch
-            checked={mapSettingsStore.showPlayerWaves}
-            onchange={() => mapSettingsStore.setShowPlayerWaves(!mapSettingsStore.showPlayerWaves)}
-          />
+          <Switch bind:checked={showPlayerWaves} />
         </FormField>
       </div>
 
@@ -201,10 +204,7 @@
           <span class="setting-desc">Dashed orbital circles</span>
         </div>
         <FormField>
-          <Switch
-            checked={mapSettingsStore.showOrbitLines}
-            onchange={() => mapSettingsStore.setShowOrbitLines(!mapSettingsStore.showOrbitLines)}
-          />
+          <Switch bind:checked={showOrbitLines} />
         </FormField>
       </div>
 
@@ -214,10 +214,7 @@
           <span class="setting-desc">Background grid overlay</span>
         </div>
         <FormField>
-          <Switch
-            checked={mapSettingsStore.showGrid}
-            onchange={() => mapSettingsStore.setShowGrid(!mapSettingsStore.showGrid)}
-          />
+          <Switch bind:checked={showGrid} />
         </FormField>
       </div>
     </Content>
