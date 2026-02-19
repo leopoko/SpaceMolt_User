@@ -77,8 +77,9 @@
     else if (dragKind === 'map') moveMap(e);
   }
 
-  // ======== Bottom panel element ref ========
+  // ======== Bottom panel element refs ========
   let bottomPanelEl: HTMLDivElement | undefined = $state(undefined);
+  let heightHandleEl: HTMLDivElement | undefined = $state(undefined);
 
   // ======== 1) EventLog ↔ Chat divider (horizontal %) ========
   let eventLogPct = $state(loadNum('sm_bp_event_pct', 45, 15, 75));
@@ -116,10 +117,18 @@
   let bottomHeight = $state(loadNum('sm_bp_height', 200, 100, 500));
 
   function moveHeight(e: MouseEvent) {
-    // Height handle is at the top of the bottom panel
+    if (!heightHandleEl) return;
     const viewH = window.innerHeight;
-    let h = viewH - e.clientY;
-    bottomHeight = Math.round(Math.max(100, Math.min(500, h)));
+    let h = viewH - e.clientY - 6; // 6 = height-handle height
+    // Cap max so tab-content keeps at least 80px.
+    // Layout: [statusbar+tabbar (fixed)] [tab-content (flex:1)] [handle 6px] [bottom-panel]
+    // handleRect.top == viewH - 6 - bottomHeight, so fixed top = viewH - 6 - bottomHeight - tabContentHeight
+    // Since tab-content is flex:1, fixedTop = mainEl.getBoundingClientRect().top
+    const appShell = heightHandleEl.parentElement;
+    const mainEl = appShell?.querySelector('.tab-content') as HTMLElement | null;
+    const fixedTop = mainEl ? mainEl.getBoundingClientRect().top : 80;
+    const maxH = viewH - fixedTop - 80 - 6; // 80 = min tab-content height
+    bottomHeight = Math.round(Math.max(100, Math.min(maxH, h)));
   }
 
   // ======== 4) Map panel ========
@@ -214,7 +223,7 @@
 
     <!-- Vertical resize handle (bottom panel height) -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="height-handle" onmousedown={(e) => startDrag('height', e)}>
+    <div class="height-handle" bind:this={heightHandleEl} onmousedown={(e) => startDrag('height', e)}>
       <button class="map-toggle" onclick={toggleMap} title={showMap ? 'Hide Map' : 'Show Map'}>
         <span class="material-icons" style="font-size:14px">{showMap ? 'map' : 'map'}</span>
         MAP
@@ -275,6 +284,7 @@
 
   .tab-content {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 12px 16px;
     background: #060a10;
