@@ -10,7 +10,6 @@
   import { ws } from '$lib/services/websocket';
 
   let selectedAsteroid = $state<string | null>(null);
-  let miningActive = $state(false);
   let repeatCount = $state(5);
   let targetPercent = $state(80);
 
@@ -19,12 +18,6 @@
   }
 
   function doMine() {
-    miningActive = true;
-    ws.mine(getAsteroidTarget());
-    setTimeout(() => { miningActive = false; }, 12000);
-  }
-
-  function doMineQueue() {
     actionQueueStore.enqueue('Mine', () => ws.mine(getAsteroidTarget()));
   }
 
@@ -95,27 +88,12 @@
       {/if}
 
       <div class="mining-actions">
-        {#if miningActive}
-          <div class="mining-progress">
-            <span class="mining-label">⛏ Mining in progress...</span>
-            <LinearProgress indeterminate class="progress-hull" />
-          </div>
-        {:else}
-          <Button
-            variant="raised"
-            onclick={doMine}
-            style="width:100%"
-          >
-            <Label>⛏ Mine Now</Label>
-          </Button>
-        {/if}
-
         <Button
-          variant="outlined"
-          onclick={doMineQueue}
+          variant="raised"
+          onclick={doMine}
           style="width:100%"
         >
-          <Label>⛏ Mine (Queue)</Label>
+          <Label>⛏ Mine</Label>
         </Button>
       </div>
 
@@ -289,20 +267,6 @@
     margin-top: 16px;
   }
 
-  .mining-progress {
-    background: rgba(255,152,0,0.08);
-    border: 1px solid rgba(255,152,0,0.2);
-    border-radius: 4px;
-    padding: 10px;
-  }
-
-  .mining-label {
-    display: block;
-    font-size: 0.75rem;
-    color: #ffb74d;
-    margin-bottom: 8px;
-  }
-
   .repeat-row {
     display: flex;
     align-items: center;
@@ -349,6 +313,10 @@
     padding: 4px 4px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
     text-transform: uppercase;
+  }
+
+  .cargo-table th.num {
+    text-align: right;
   }
 
   .cargo-table td {

@@ -27,6 +27,10 @@ class ActionQueueStore {
     this.executors.set(id, execute);
     this.items = [...this.items, { id, label }];
     eventsStore.add({ type: 'info', message: `[Queue] 追加: ${label} (${this.items.length}件)` });
+    // If no action is currently executing, run immediately without waiting for next tick
+    if (!this.currentAction) {
+      this.executeNext();
+    }
   }
 
   remove(id: number) {

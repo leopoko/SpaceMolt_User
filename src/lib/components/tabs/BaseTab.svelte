@@ -439,6 +439,10 @@
     letter-spacing: 0.08em;
   }
 
+  .storage-table th.num {
+    text-align: right;
+  }
+
   .storage-table td {
     padding: 4px;
     color: #90a4ae;

@@ -147,14 +147,6 @@
   // Memo info
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
 
-  // Cargo view helper – get memo price for an item
-  function memoPrice(itemId: string): string {
-    const info = marketMemoStore.getItemPrice(itemId);
-    if (!info) return '';
-    if (info.best_buy > 0) return `Buy: ₡${info.best_buy}`;
-    if (info.best_sell > 0) return `Sell: ₡${info.best_sell}`;
-    return '';
-  }
 </script>
 
 <div class="trading-layout">
@@ -216,8 +208,8 @@
                     </span>
                   </td>
                   <td class="item-name">{item.item_name}</td>
-                  <td class="num mono">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
-                  <td class="num mono">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
+                  <td class="num mono buy-price">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
+                  <td class="num mono sell-price">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
                   <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
                 </tr>
 
@@ -226,37 +218,16 @@
                   <tr class="detail-row">
                     <td colspan="5">
                       <div class="detail-grid">
-                        <!-- Sell orders (things for sale – you can buy from these) -->
-                        <div class="detail-section">
-                          <p class="detail-title sell-label">For Sale (Buy from)</p>
-                          {#if item.sell_orders.length > 0}
-                            <table class="detail-table">
-                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
-                              <tbody>
-                                {#each item.sell_orders as order}
-                                  <tr>
-                                    <td class="num mono credits">₡{order.price_each.toLocaleString()}</td>
-                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
-                          {:else}
-                            <p class="detail-empty">No sell orders</p>
-                          {/if}
-                        </div>
-
                         <!-- Buy orders (things wanted – you can sell to these) -->
                         <div class="detail-section">
-                          <p class="detail-title buy-label">Wanted (Sell to)</p>
+                          <p class="detail-title buy-label">Buy Orders (Sell to)</p>
                           {#if item.buy_orders.length > 0}
                             <table class="detail-table">
                               <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
                               <tbody>
                                 {#each item.buy_orders as order}
                                   <tr>
-                                    <td class="num mono credits">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
                                     <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
                                     <td><button class="action-btn sell-btn" onclick={(e) => { e.stopPropagation(); quickSell(item, order); }}>Sell</button></td>
                                   </tr>
@@ -265,6 +236,27 @@
                             </table>
                           {:else}
                             <p class="detail-empty">No buy orders</p>
+                          {/if}
+                        </div>
+
+                        <!-- Sell orders (things for sale – you can buy from these) -->
+                        <div class="detail-section">
+                          <p class="detail-title sell-label">Sell Orders (Buy from)</p>
+                          {#if item.sell_orders.length > 0}
+                            <table class="detail-table">
+                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
+                              <tbody>
+                                {#each item.sell_orders as order}
+                                  <tr>
+                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <p class="detail-empty">No sell orders</p>
                           {/if}
                         </div>
                       </div>
@@ -307,7 +299,7 @@
                       </span>
                     </td>
                     <td>{order.item_name}</td>
-                    <td class="num mono credits">₡{order.price_each.toLocaleString()}</td>
+                    <td class="num mono {order.order_type === 'buy' ? 'buy-price' : 'sell-price'}">₡{order.price_each.toLocaleString()}</td>
                     <td class="num mono">{order.quantity}</td>
                     <td class="num mono">{order.remaining}</td>
                     <td>
@@ -413,7 +405,19 @@
                 <tr>
                   <td>{c.name ?? c.item_id}</td>
                   <td class="num mono">{c.quantity}</td>
-                  <td class="num mono dim">{memoPrice(c.item_id)}</td>
+                  {@const mp = marketMemoStore.getItemPrice(c.item_id)}
+                  <td class="num mono">
+                    {#if mp && mp.best_buy > 0}
+                      <span class="buy-price">B:₡{mp.best_buy}</span>
+                    {/if}
+                    {#if mp && mp.best_sell > 0}
+                      {#if mp.best_buy > 0} / {/if}
+                      <span class="sell-price">S:₡{mp.best_sell}</span>
+                    {/if}
+                    {#if !mp || (mp.best_buy <= 0 && mp.best_sell <= 0)}
+                      <span class="dim">—</span>
+                    {/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -492,6 +496,10 @@
     text-transform: uppercase;
   }
 
+  .market-table th.num {
+    text-align: right;
+  }
+
   .market-table td {
     padding: 4px 6px;
     color: #90a4ae;
@@ -502,6 +510,8 @@
   .mono { font-family: 'Roboto Mono', monospace; }
   .credits { color: #ffd700; }
   .dim { color: #4a6070; font-size: 0.68rem; }
+  .buy-price { color: #66bb6a; }
+  .sell-price { color: #ff9800; }
 
   /* Item rows */
   .item-row {
