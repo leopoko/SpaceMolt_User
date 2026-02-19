@@ -22,17 +22,15 @@
   // Selected stored item (clickable rows)
   let selectedStoredItem = $state<string | null>(null);
 
-  // Auto-refresh when Base tab is selected
+  // Auto-refresh when Base tab is selected (view_storage is chained from get_base ok handler)
   $effect(() => {
     if (uiStore.activeTab.label === 'Base' && playerStore.isDocked) {
       ws.getBase();
-      ws.viewStorage();
     }
   });
 
   function loadStorage() {
     ws.getBase();
-    ws.viewStorage();
   }
 
   /** Unique item suggestions from both storage and cargo */
@@ -275,7 +273,7 @@
           <div class="cargo-header">
             <p class="tab-section-title" style="margin:0">Cargo (Ship)</p>
             <button class="deposit-all-btn" onclick={doDepositAllCargo} title="Deposit all cargo items">
-              Deposit All ↓
+              Deposit All ↑
             </button>
           </div>
           <table class="storage-table">
@@ -295,7 +293,7 @@
                   <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
                   <td>
                     <button class="deposit-btn" onclick={(e) => { e.stopPropagation(); doDepositSelected(item.item_id); }} title="Deposit all {item.item_id}">
-                      ↓
+                      ↑
                     </button>
                   </td>
                 </tr>
@@ -334,10 +332,10 @@
           </div>
           <div class="btn-row">
             <Button variant="outlined" onclick={doDepositItem} style="flex:1">
-              <Label>Deposit ↓</Label>
+              <Label>Deposit ↑</Label>
             </Button>
             <Button variant="outlined" onclick={doWithdrawItem} style="flex:1">
-              <Label>Withdraw ↑</Label>
+              <Label>Withdraw ↓</Label>
             </Button>
           </div>
         </div>
@@ -362,10 +360,10 @@
 
         <div class="type-toggle" style="margin:12px 0">
           <button class="toggle-btn" class:active={creditMode === 'deposit'} onclick={() => (creditMode = 'deposit')}>
-            Deposit ↓
+            Deposit ↑
           </button>
           <button class="toggle-btn" class:active={creditMode === 'withdraw'} onclick={() => (creditMode = 'withdraw')}>
-            Withdraw ↑
+            Withdraw ↓
           </button>
         </div>
 

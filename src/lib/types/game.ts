@@ -7,7 +7,7 @@
 export type SecurityLevel = 'high' | 'medium' | 'low' | 'null';
 export type PlayerStatus = 'active' | 'docked' | 'dead' | 'traveling';
 export type EventType = 'combat' | 'trade' | 'nav' | 'system' | 'chat' | 'error' | 'info';
-export type ChatChannel = 'global' | 'faction' | 'local' | 'system';
+export type ChatChannel = 'global' | 'faction' | 'local' | 'system' | 'private';
 export type MissionStatus = 'available' | 'active' | 'complete' | 'failed';
 export type OrderType = 'buy' | 'sell';
 
@@ -375,21 +375,28 @@ export interface MyOrders {
 
 // ---- Crafting ----
 
+export interface RecipeInput {
+  item_id: string;
+  quantity: number;
+}
+
+export interface RecipeOutput {
+  item_id: string;
+  quantity: number;
+  quality_mod?: boolean;
+}
+
 export interface Recipe {
   id: string;
   name: string;
   description: string;
-  inputs: RecipeItem[];
-  output: RecipeItem;
-  craft_time_ticks: number;
-  required_skills: string[];
-  station_types: string[];
-}
-
-export interface RecipeItem {
-  item_id: string;
-  item_name: string;
-  quantity: number;
+  category?: string;
+  inputs: RecipeInput[];
+  outputs: RecipeOutput[];
+  required_skills: Record<string, number>;
+  crafting_time: number;
+  base_quality?: number;
+  skill_quality_mod?: number;
 }
 
 // ---- Faction ----
@@ -526,7 +533,11 @@ export interface ChatMessage {
   message: string;
   timestamp: number;
   channel: ChatChannel;
+  target_id?: string;
 }
+
+/** View filter for chat panel – 'all' shows every channel */
+export type ChatViewFilter = ChatChannel | 'all';
 
 export interface EventLogEntry {
   id: string;

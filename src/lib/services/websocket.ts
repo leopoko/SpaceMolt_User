@@ -19,6 +19,7 @@ import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 import { catalogStore } from '$lib/stores/catalog.svelte';
+import { contactsStore } from '$lib/stores/contacts.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -306,6 +307,12 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
           this.viewStorage();
+        } else if (cmd === 'craft') {
+          const message = (result?.message as string) ?? 'Craft complete';
+          craftingStore.setLastResult(message);
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          this.viewStorage();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -326,6 +333,9 @@ class WebSocketService {
         // Clear travel state on travel/jump errors
         if (cmd === 'travel' || cmd === 'jump') {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+        }
+        if (cmd === 'craft') {
+          craftingStore.setLastResult(errMsg);
         }
         eventsStore.add({ type: 'error', message: errMsg });
         break;
@@ -355,9 +365,8 @@ class WebSocketService {
           poi_id: pl.station_id ?? null,
           docked_at_base: pl.station_id ?? null
         });
-        // Auto-load station info and storage when docked
+        // Auto-load station info (view_storage is chained from get_base ok handler)
         this.getBase();
-        this.viewStorage();
         break;
       }
 
@@ -467,17 +476,19 @@ class WebSocketService {
 
       case 'craft_result': {
         const pl = p<{ message?: string; success?: boolean; ship?: never }>(msg);
-        craftingStore.setInProgress(false);
         const resultMsg = pl.message ?? (pl.success ? 'Craft complete' : 'Craft failed');
         craftingStore.setLastResult(resultMsg);
         eventsStore.add({ type: 'info', message: resultMsg });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
+        this.viewStorage();
         break;
       }
 
       case 'recipes': {
-        const pl = p<{ recipes?: Recipe[] }>(msg);
-        craftingStore.setRecipes(pl.recipes ?? []);
+        const pl = p<{ recipes?: Record<string, Recipe> }>(msg);
+        if (pl.recipes && typeof pl.recipes === 'object') {
+          craftingStore.setRecipes(pl.recipes);
+        }
         break;
       }
 
@@ -488,8 +499,29 @@ class WebSocketService {
       }
 
       case 'chat_message': {
-        const pl = p<ChatMessage>(msg);
-        chatStore.addMessage(pl);
+        const raw = p<Record<string, unknown>>(msg);
+        const normalized: ChatMessage = {
+          id: (raw.id as string) ?? String(Date.now()),
+          sender_id: (raw.sender_id as string) ?? '',
+          sender_name: (raw.sender as string) ?? (raw.sender_name as string) ?? 'Unknown',
+          message: (raw.content as string) ?? (raw.message as string) ?? '',
+          timestamp: typeof raw.timestamp === 'string' ? new Date(raw.timestamp).getTime() : (raw.timestamp as number) ?? Date.now(),
+          channel: (raw.channel as ChatMessage['channel']) ?? 'global',
+          target_id: (raw.target_id as string) ?? undefined,
+        };
+        chatStore.addMessage(normalized);
+        // Also show in EventLog
+        const chLabel = normalized.channel.toUpperCase();
+        eventsStore.add({ type: 'chat', message: `[${chLabel}] ${normalized.sender_name}: ${normalized.message}` });
+        // Save private messages to contacts
+        if (normalized.channel === 'private') {
+          // Determine the conversation partner
+          const myUsername = authStore.username;
+          const partner = normalized.sender_name === myUsername
+            ? (normalized.target_id ?? 'Unknown')
+            : normalized.sender_name;
+          contactsStore.addMessage(normalized, partner);
+        }
         break;
       }
 
@@ -567,6 +599,8 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
+        } else if ((pl as Record<string, unknown>).recipes && typeof (pl as Record<string, unknown>).recipes === 'object' && !Array.isArray((pl as Record<string, unknown>).recipes)) {
+          craftingStore.setRecipes((pl as Record<string, unknown>).recipes as Record<string, Recipe>);
         } else if (isCatalogResponse(pl)) {
           catalogStore.handleResponse(pl as unknown as CatalogResponse);
         } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
@@ -591,6 +625,8 @@ class WebSocketService {
           const condition = raw.condition as BaseCondition | undefined;
           if (base && base.name) {
             baseStore.setBase(base, condition);
+            // Chain: get_base ok → view_storage (avoid concurrent queries)
+            this.viewStorage();
           }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
@@ -728,9 +764,8 @@ class WebSocketService {
   // ---- Crafting ----
 
   getRecipes() { this.send({ type: 'get_recipes' }); }
-  craft(recipeId: string, quantity: number) {
-    craftingStore.setInProgress(true);
-    this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
+  craft(recipeId: string, count: number) {
+    this.send({ type: 'craft', payload: { recipe_id: recipeId, count: Math.min(Math.max(1, count), 10) } });
   }
 
   // ---- Storage / Base ----
@@ -765,8 +800,23 @@ class WebSocketService {
 
   // ---- Chat ----
 
-  sendChat(message: string, channel = 'global') {
-    this.send({ type: 'chat', payload: { message, channel } });
+  sendChat(content: string, channel = 'global', target?: string) {
+    const payload: Record<string, unknown> = { content, channel };
+    if (channel === 'private' && target) {
+      payload.target_id = target;
+      // Save sent PM to contacts
+      const sentMsg: ChatMessage = {
+        id: `sent_${Date.now()}`,
+        sender_id: '',
+        sender_name: authStore.username,
+        message: content,
+        timestamp: Date.now(),
+        channel: 'private',
+        target_id: target,
+      };
+      contactsStore.addMessage(sentMsg, target);
+    }
+    this.send({ type: 'chat', payload });
   }
 }
 

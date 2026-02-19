@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { POI } from '$lib/types/game';
   import { playerStore } from '$lib/stores/player.svelte';
+  import { systemStore } from '$lib/stores/system.svelte';
 
   let { pois = [] }: { pois: POI[] } = $props();
 
@@ -69,6 +70,23 @@
     return [...radii.values()];
   });
 
+  // Travel line: from current POI to destination POI
+  let travelLine = $derived.by(() => {
+    const t = systemStore.travel;
+    if (!t.in_progress || t.type === 'jump') return null;
+
+    const fromPoi = mappedPois.find(p => p.id === playerStore.poi_id);
+    const toPoi = mappedPois.find(p => p.id === t.destination_id);
+    if (!fromPoi?.position || !toPoi?.position) return null;
+
+    return {
+      x1: fromPoi.position.x,
+      y1: fromPoi.position.y,
+      x2: toPoi.position.x,
+      y2: toPoi.position.y,
+    };
+  });
+
   // Wave animation duration based on online count: more players = faster
   function waveDuration(online: number): number {
     if (online <= 0) return 0;
@@ -124,6 +142,36 @@
       />
     {/each}
 
+    <!-- Travel line animation -->
+    {#if travelLine}
+      {@const dl = Math.sqrt((travelLine.x2 - travelLine.x1) ** 2 + (travelLine.y2 - travelLine.y1) ** 2)}
+      <!-- Dashed path -->
+      <line
+        x1={travelLine.x1} y1={travelLine.y1}
+        x2={travelLine.x2} y2={travelLine.y2}
+        stroke="rgba(255,183,77,0.3)"
+        stroke-width={sw * 0.8}
+        stroke-dasharray="{mapMetrics.scale * 0.02} {mapMetrics.scale * 0.012}"
+      />
+      <!-- Moving dot along the path -->
+      <circle r={mapMetrics.scale * 0.015} fill="#ffb74d" opacity="0.9">
+        <animateMotion
+          dur="2s"
+          repeatCount="indefinite"
+          path="M{travelLine.x1},{travelLine.y1} L{travelLine.x2},{travelLine.y2}"
+        />
+      </circle>
+      <!-- Second dot offset -->
+      <circle r={mapMetrics.scale * 0.01} fill="#ffb74d" opacity="0.5">
+        <animateMotion
+          dur="2s"
+          begin="-1s"
+          repeatCount="indefinite"
+          path="M{travelLine.x1},{travelLine.y1} L{travelLine.x2},{travelLine.y2}"
+        />
+      </circle>
+    {/if}
+
     <!-- POI dots and waves -->
     {#each mappedPois as poi (poi.id)}
       {@const x = poi.position!.x}
@@ -131,7 +179,7 @@
       {@const online = getOnline(poi)}
       {@const isHere = playerStore.poi_id === poi.id}
       {@const color = poiColors[poi.type] ?? '#b0bec5'}
-      {@const dotR = poi.type === 'sun' ? mapMetrics.scale * 0.06 : mapMetrics.scale * 0.035}
+      {@const dotR = poi.type === 'sun' ? mapMetrics.scale * 0.035 : mapMetrics.scale * 0.018}
 
       <!-- Wave ripples for POIs with players -->
       {#if online > 0}
@@ -148,7 +196,7 @@
             <animate
               attributeName="r"
               from={dotR}
-              to={dotR + mapMetrics.scale * 0.12}
+              to={dotR + mapMetrics.scale * 0.08}
               dur="{waveDuration(online)}s"
               begin="{waveIdx * waveDuration(online) / 3}s"
               repeatCount="indefinite"
@@ -169,10 +217,10 @@
       {#if isHere}
         <circle
           cx={x} cy={y}
-          r={dotR + mapMetrics.scale * 0.025}
+          r={dotR + mapMetrics.scale * 0.015}
           fill="none"
           stroke="#4caf50"
-          stroke-width={sw * 1.5}
+          stroke-width={sw * 1.2}
           filter="url(#glow-current)"
         >
           <animate
@@ -212,18 +260,18 @@
         text-anchor="middle"
         dominant-baseline="central"
         fill={poi.type === 'sun' ? '#5d4037' : '#fff'}
-        font-size={dotR * 1.1}
+        font-size={dotR * 1.0}
         style="pointer-events:none"
       >{poiIcons[poi.type] ?? '\u25CF'}</text>
 
       <!-- POI label -->
       <text
         x={x}
-        y={y + dotR + mapMetrics.scale * 0.04}
+        y={y + dotR + mapMetrics.scale * 0.03}
         text-anchor="middle"
         dominant-baseline="hanging"
         fill={isHere ? '#81c784' : '#78909c'}
-        font-size={mapMetrics.scale * 0.04}
+        font-size={mapMetrics.scale * 0.035}
         font-family="'Roboto', sans-serif"
         style="pointer-events:none"
       >{poi.name}</text>
@@ -231,12 +279,12 @@
       <!-- Online count badge -->
       {#if online > 0}
         <text
-          x={x + dotR + mapMetrics.scale * 0.015}
+          x={x + dotR + mapMetrics.scale * 0.01}
           y={y - dotR * 0.3}
           text-anchor="start"
           dominant-baseline="central"
           fill={color}
-          font-size={mapMetrics.scale * 0.03}
+          font-size={mapMetrics.scale * 0.025}
           font-family="'Roboto Mono', monospace"
           opacity="0.8"
           style="pointer-events:none"
@@ -253,7 +301,7 @@
 <style>
   .system-map-container {
     width: 100%;
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 2 / 1;
     background: radial-gradient(ellipse at center, rgba(13,21,37,0.9) 0%, rgba(6,10,16,0.95) 100%);
     border: 1px solid rgba(79,195,247,0.12);
     border-radius: 6px;
