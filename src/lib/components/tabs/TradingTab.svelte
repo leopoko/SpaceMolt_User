@@ -198,6 +198,14 @@
     );
   }
 
+  function gotoCraftOutput(itemId: string) {
+    uiStore.navigateToCrafting(itemId, 'output');
+  }
+
+  function gotoCraftInput(itemId: string) {
+    uiStore.navigateToCrafting(itemId, 'input');
+  }
+
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
 </script>
 
@@ -319,6 +327,14 @@
                             <p class="detail-empty">No sell orders</p>
                           {/if}
                         </div>
+                      </div>
+                      <div class="craft-links">
+                        <button class="craft-link-btn" onclick={(e) => { e.stopPropagation(); gotoCraftOutput(item.item_id); }} title="Recipes that produce {item.item_name}">
+                          <span class="material-icons" style="font-size:13px">precision_manufacturing</span> Craft this
+                        </button>
+                        <button class="craft-link-btn" onclick={(e) => { e.stopPropagation(); gotoCraftInput(item.item_id); }} title="Recipes that use {item.item_name}">
+                          <span class="material-icons" style="font-size:13px">build</span> Use in craft
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -717,6 +733,27 @@
     padding: 2px 4px;
     color: #90a4ae;
   }
+
+  .craft-links {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px 4px 30px;
+  }
+
+  .craft-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: 1px solid rgba(124,77,255,0.25);
+    color: #b388ff;
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .craft-link-btn:hover { background: rgba(124,77,255,0.1); }
 
   .detail-empty {
     font-size: 0.65rem;

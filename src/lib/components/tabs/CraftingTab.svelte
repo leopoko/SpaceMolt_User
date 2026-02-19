@@ -7,11 +7,23 @@
   import { baseStore } from '$lib/stores/base.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
 
   let searchText = $state('');
   let searchMode = $state<'all' | 'input' | 'output'>('all');
+
+  // Pick up cross-tab navigation from uiStore
+  $effect(() => {
+    if (uiStore.craftingSearch) {
+      searchText = uiStore.craftingSearch;
+      searchMode = uiStore.craftingSearchMode;
+      selectedCategory = '';
+      cargoOnly = false;
+      uiStore.craftingSearch = '';
+    }
+  });
   let selectedCategory = $state('');
   let cargoOnly = $state(false);
   let repeatCount = $state(1);
