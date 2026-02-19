@@ -30,6 +30,9 @@ class CatalogStore {
   recipes = $state<CatalogState>(emptyState());
   items = $state<CatalogState>(emptyState());
 
+  /** Optional callback for bulk-fetching items (Module Encyclopedia). NOT in $state (function). */
+  onItemsBulkResponse: ((resp: CatalogResponse) => void) | null = null;
+
   private getState(type: CatalogType): CatalogState {
     switch (type) {
       case 'ships': return this.ships;
@@ -69,6 +72,11 @@ class CatalogStore {
     state.pageSize = resp.page_size ?? 20;
     state.totalPages = resp.total_pages ?? 0;
     state.loading = false;
+
+    // Notify bulk-fetch callback (Module Encyclopedia)
+    if (resp.type === 'items' && this.onItemsBulkResponse) {
+      this.onItemsBulkResponse(resp);
+    }
   }
 }
 
