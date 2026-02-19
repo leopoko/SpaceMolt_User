@@ -552,24 +552,25 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
-        } else if (pl.action === 'view_storage') {
-          // Query response: storage data embedded in ok payload
+        } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
+          // Query response: view_storage — detected by action field or by base_id+items presence
           const raw = msg.payload as Record<string, unknown>;
           const storageData: StorageData = {
-            station_id: (raw.station_id as string) ?? '',
+            station_id: (raw.station_id as string) ?? (raw.base_id as string) ?? '',
+            base_id: (raw.base_id as string) ?? (raw.station_id as string) ?? '',
             station_name: (raw.station_name as string) ?? '',
             items: (raw.items as StorageData['items']) ?? [],
             credits: (raw.credits as number) ?? 0,
-            capacity: (raw.capacity as number) ?? 0,
-            capacity_used: (raw.capacity_used as number) ?? 0,
+            capacity: (raw.capacity as number) ?? undefined,
+            capacity_used: (raw.capacity_used as number) ?? undefined,
             ships: (raw.ships as StorageData['ships']) ?? [],
             gifts: (raw.gifts as StorageData['gifts']) ?? [],
           };
           baseStore.setStorage(storageData);
-        } else if (pl.action === 'get_base') {
-          // Query response: base info embedded in ok payload
+        } else if (pl.action === 'get_base' || (msg.payload as Record<string, unknown>)?.base) {
+          // Query response: get_base — detected by action field or by base field presence
           const raw = msg.payload as Record<string, unknown>;
-          const base = (raw.base as BaseInfo) ?? raw as unknown as BaseInfo;
+          const base = raw.base as BaseInfo;
           const condition = raw.condition as BaseCondition | undefined;
           if (base && base.name) {
             baseStore.setBase(base, condition);

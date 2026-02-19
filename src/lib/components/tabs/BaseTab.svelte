@@ -85,16 +85,31 @@
 
           {#if baseStore.baseCondition}
             <p class="tab-section-title" style="margin-top:12px">Condition</p>
-            <LinearProgress
-              progress={baseStore.baseCondition.max_health > 0
-                ? baseStore.baseCondition.health / baseStore.baseCondition.max_health
-                : 0}
-              style="--mdc-theme-primary:#4caf50; margin-bottom:6px"
-            />
-            <p class="mono condition-text">
-              {baseStore.baseCondition.health} / {baseStore.baseCondition.max_health} HP
-              <span class="condition-status">({baseStore.baseCondition.status})</span>
-            </p>
+            {#if baseStore.baseCondition.satisfaction_pct !== undefined}
+              <LinearProgress
+                progress={(baseStore.baseCondition.satisfaction_pct ?? 0) / 100}
+                style="--mdc-theme-primary:{(baseStore.baseCondition.satisfaction_pct ?? 0) >= 70 ? '#4caf50' : (baseStore.baseCondition.satisfaction_pct ?? 0) >= 40 ? '#ff9800' : '#f44336'}; margin-bottom:6px"
+              />
+              <p class="mono condition-text">
+                {baseStore.baseCondition.satisfied_count}/{baseStore.baseCondition.total_service_infra} systems
+                <span class="condition-status">({baseStore.baseCondition.satisfaction_pct}%)</span>
+              </p>
+              <p class="condition-label">{baseStore.baseCondition.condition}</p>
+              {#if baseStore.baseCondition.condition_text}
+                <p class="condition-flavor">{baseStore.baseCondition.condition_text}</p>
+              {/if}
+            {:else if baseStore.baseCondition.max_health}
+              <LinearProgress
+                progress={baseStore.baseCondition.max_health > 0
+                  ? (baseStore.baseCondition.health ?? 0) / baseStore.baseCondition.max_health
+                  : 0}
+                style="--mdc-theme-primary:#4caf50; margin-bottom:6px"
+              />
+              <p class="mono condition-text">
+                {baseStore.baseCondition.health} / {baseStore.baseCondition.max_health} HP
+                <span class="condition-status">({baseStore.baseCondition.status})</span>
+              </p>
+            {/if}
           {/if}
 
           {#if baseStore.serviceList.length > 0}
@@ -296,6 +311,8 @@
   .cap-text { font-size: 0.7rem; color: #ff9800; margin: 0; }
   .condition-text { font-size: 0.7rem; color: #4caf50; margin: 0; }
   .condition-status { color: #546e7a; }
+  .condition-label { font-size: 0.72rem; color: #ff9800; margin: 2px 0 0; text-transform: capitalize; }
+  .condition-flavor { font-size: 0.65rem; color: #546e7a; margin: 2px 0 0; font-style: italic; line-height: 1.3; }
   .defense-text { font-size: 0.7rem; color: #2196f3; margin: 0; }
 
   .services { display: flex; flex-wrap: wrap; gap: 4px; }

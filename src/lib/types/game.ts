@@ -265,9 +265,15 @@ export interface BaseServices {
 }
 
 export interface BaseCondition {
-  health: number;
-  max_health: number;
-  status: string;
+  total_service_infra?: number;
+  satisfied_count?: number;
+  satisfaction_pct?: number;
+  condition?: string;
+  condition_text?: string;
+  // Legacy fields
+  health?: number;
+  max_health?: number;
+  status?: string;
 }
 
 export interface BaseInfo {
@@ -291,14 +297,15 @@ export interface BaseInfo {
 }
 
 export interface StorageData {
-  station_id: string;
-  station_name: string;
+  station_id?: string;
+  station_name?: string;
+  base_id?: string;
   items: CargoItem[];
   credits: number;
-  capacity: number;
-  capacity_used: number;
-  ships: Ship[];
-  gifts: StorageGift[];
+  capacity?: number;
+  capacity_used?: number;
+  ships?: Ship[];
+  gifts?: StorageGift[];
 }
 
 export interface StorageGift {
