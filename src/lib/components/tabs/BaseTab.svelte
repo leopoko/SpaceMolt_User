@@ -2,8 +2,9 @@
   import { loopStore } from '$lib/stores/loop.svelte';
   import StationSubTab from './base/StationSubTab.svelte';
   import LoopSubTab from './base/LoopSubTab.svelte';
+  import StorageMemoSubTab from './base/StorageMemoSubTab.svelte';
 
-  let activeSubTab = $state<'station' | 'loop'>('station');
+  let activeSubTab = $state<'station' | 'memo' | 'loop'>('station');
 </script>
 
 <div class="base-container">
@@ -15,6 +16,14 @@
     >
       <span class="material-icons sub-tab-icon">apartment</span>
       Station
+    </button>
+    <button
+      class="sub-tab"
+      class:active={activeSubTab === 'memo'}
+      onclick={() => (activeSubTab = 'memo')}
+    >
+      <span class="material-icons sub-tab-icon">bookmark</span>
+      Memo
     </button>
     <button
       class="sub-tab"
@@ -34,6 +43,8 @@
   <div class="sub-tab-content">
     {#if activeSubTab === 'station'}
       <StationSubTab />
+    {:else if activeSubTab === 'memo'}
+      <StorageMemoSubTab />
     {:else}
       <LoopSubTab />
     {/if}

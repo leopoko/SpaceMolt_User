@@ -9,6 +9,7 @@
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+  import { bookmarkStore } from '$lib/stores/bookmark.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
@@ -74,12 +75,16 @@
       );
     }
 
-    // Sort favorites to top
+    // Sort: favorites first, then recipes producing bookmarked items, then rest
     const favIds = craftingStore.favoriteIds;
+    const bmIds = bookmarkStore.ids;
     list = [...list].sort((a, b) => {
       const aFav = favIds.has(a.id) ? 0 : 1;
       const bFav = favIds.has(b.id) ? 0 : 1;
-      return aFav - bFav;
+      if (aFav !== bFav) return aFav - bFav;
+      const aBm = (a.outputs ?? []).some(o => bmIds.has(o.item_id)) ? 0 : 1;
+      const bBm = (b.outputs ?? []).some(o => bmIds.has(o.item_id)) ? 0 : 1;
+      return aBm - bBm;
     });
 
     return list;
@@ -288,6 +293,7 @@
                   → {(recipe.outputs ?? []).map(o => `${o.quantity}x ${formatItemId(o.item_id)}`).join(', ')}
                   {#each recipe.outputs ?? [] as o}
                     {@const mp = marketMemoStore.getItemPrice(o.item_id)}
+                    {#if bookmarkStore.has(o.item_id)}<span class="bm-tag"><span class="material-icons" style="font-size:10px">bookmark</span></span>{/if}
                     {#if mp && (mp.best_buy > 0 || mp.best_sell > 0)}
                       <span class="memo-tag">{#if mp.best_buy > 0}<span class="memo-buy">B:₡{mp.best_buy}</span>{/if}{#if mp.best_sell > 0}{#if mp.best_buy > 0} / {/if}<span class="memo-sell">S:₡{mp.best_sell}</span>{/if}</span>
                     {/if}
@@ -351,6 +357,9 @@
               <span class="mat-name">
                 <span class="mat-name-line">
                   {formatItemId(input.item_id)}
+                  <button class="bm-btn-inline" class:active={bookmarkStore.has(input.item_id)} onclick={(e) => { e.stopPropagation(); bookmarkStore.toggle(input.item_id); }} title={bookmarkStore.has(input.item_id) ? 'Remove bookmark' : 'Bookmark'}>
+                    <span class="material-icons" style="font-size:13px">{bookmarkStore.has(input.item_id) ? 'bookmark' : 'bookmark_border'}</span>
+                  </button>
                   <button
                     class="item-search-btn"
                     title="Search recipes that produce this item"
@@ -385,6 +394,9 @@
             <span class="mat-name">
               <span class="mat-name-line">
                 {formatItemId(output.item_id)}
+                <button class="bm-btn-inline" class:active={bookmarkStore.has(output.item_id)} onclick={(e) => { e.stopPropagation(); bookmarkStore.toggle(output.item_id); }} title={bookmarkStore.has(output.item_id) ? 'Remove bookmark' : 'Bookmark'}>
+                  <span class="material-icons" style="font-size:13px">{bookmarkStore.has(output.item_id) ? 'bookmark' : 'bookmark_border'}</span>
+                </button>
                 <button
                   class="item-search-btn"
                   title="Search recipes that use this item"
@@ -840,6 +852,26 @@
   }
 
   .craft-result { font-size: 0.78rem; color: #66bb6a; margin-top: 8px; text-align: center; }
+
+  /* Bookmark */
+  .bm-tag {
+    color: #4fc3f7;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+
+  .bm-btn-inline {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    color: #37474f;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .bm-btn-inline:hover { color: #4fc3f7; }
+  .bm-btn-inline.active { color: #4fc3f7; }
 
   /* Memo prices */
   .memo-tag {
