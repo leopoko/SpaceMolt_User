@@ -311,6 +311,7 @@ class WebSocketService {
           craftingStore.setLastResult(message);
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          this.viewStorage();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -478,6 +479,7 @@ class WebSocketService {
         craftingStore.setLastResult(resultMsg);
         eventsStore.add({ type: 'info', message: resultMsg });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
+        this.viewStorage();
         break;
       }
 
