@@ -11,6 +11,7 @@
   import type { Recipe } from '$lib/types/game';
 
   let searchText = $state('');
+  let searchMode = $state<'all' | 'input' | 'output'>('all');
   let selectedCategory = $state('');
   let cargoOnly = $state(false);
   let repeatCount = $state(1);
@@ -35,16 +36,21 @@
       list = list.filter(r => r.category === selectedCategory);
     }
 
-    // Text search
+    // Text search (filtered by searchMode)
     if (searchText) {
       const q = searchText.toLowerCase();
-      list = list.filter(r =>
-        r.name.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q) ||
-        (r.description ?? '').toLowerCase().includes(q) ||
-        (r.inputs ?? []).some(i => i.item_id.toLowerCase().includes(q)) ||
-        (r.outputs ?? []).some(o => o.item_id.toLowerCase().includes(q))
-      );
+      list = list.filter(r => {
+        const nameMatch = r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q);
+        if (searchMode === 'input') {
+          return (r.inputs ?? []).some(i => i.item_id.toLowerCase().includes(q));
+        } else if (searchMode === 'output') {
+          return (r.outputs ?? []).some(o => o.item_id.toLowerCase().includes(q));
+        }
+        // 'all' mode: match any field
+        return nameMatch ||
+          (r.inputs ?? []).some(i => i.item_id.toLowerCase().includes(q)) ||
+          (r.outputs ?? []).some(o => o.item_id.toLowerCase().includes(q));
+      });
     }
 
     // Material filter: only recipes where at least one input is available (cargo or storage)
@@ -137,6 +143,11 @@
           variant="outlined"
           style="width:100%"
         />
+        <div class="search-mode-toggle">
+          <button class="mode-chip" class:active={searchMode === 'all'} onclick={() => searchMode = 'all'}>All</button>
+          <button class="mode-chip" class:active={searchMode === 'input'} onclick={() => searchMode = 'input'}>Input</button>
+          <button class="mode-chip" class:active={searchMode === 'output'} onclick={() => searchMode = 'output'}>Output</button>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -367,6 +378,31 @@
   /* Search */
   .search-row {
     margin-bottom: 8px;
+  }
+
+  .search-mode-toggle {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .mode-chip {
+    padding: 2px 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    color: #78909c;
+    font-size: 0.65rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .mode-chip:hover { background: rgba(255,255,255,0.06); }
+  .mode-chip.active {
+    background: rgba(124,77,255,0.1);
+    border-color: rgba(124,77,255,0.35);
+    color: #b388ff;
   }
 
   /* Filters */

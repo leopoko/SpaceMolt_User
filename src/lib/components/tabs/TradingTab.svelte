@@ -261,26 +261,6 @@
                     <td colspan="5">
                       <div class="detail-grid">
                         <div class="detail-section">
-                          <p class="detail-title sell-label">For Sale (Buy from)</p>
-                          {#if item.sell_orders.length > 0}
-                            <table class="detail-table">
-                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
-                              <tbody>
-                                {#each item.sell_orders as order}
-                                  <tr>
-                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
-                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
-                          {:else}
-                            <p class="detail-empty">No sell orders</p>
-                          {/if}
-                        </div>
-
-                        <div class="detail-section">
                           <p class="detail-title buy-label">Wanted (Sell to)</p>
                           {#if item.buy_orders.length > 0}
                             <table class="detail-table">
@@ -297,6 +277,26 @@
                             </table>
                           {:else}
                             <p class="detail-empty">No buy orders</p>
+                          {/if}
+                        </div>
+
+                        <div class="detail-section">
+                          <p class="detail-title sell-label">For Sale (Buy from)</p>
+                          {#if item.sell_orders.length > 0}
+                            <table class="detail-table">
+                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
+                              <tbody>
+                                {#each item.sell_orders as order}
+                                  <tr>
+                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <p class="detail-empty">No sell orders</p>
                           {/if}
                         </div>
                       </div>
