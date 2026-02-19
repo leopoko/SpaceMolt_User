@@ -488,8 +488,20 @@ class WebSocketService {
       }
 
       case 'chat_message': {
-        const pl = p<ChatMessage>(msg);
-        chatStore.addMessage(pl);
+        const raw = p<Record<string, unknown>>(msg);
+        const normalized: ChatMessage = {
+          id: (raw.id as string) ?? String(Date.now()),
+          sender_id: (raw.sender_id as string) ?? '',
+          sender_name: (raw.sender as string) ?? (raw.sender_name as string) ?? 'Unknown',
+          message: (raw.content as string) ?? (raw.message as string) ?? '',
+          timestamp: typeof raw.timestamp === 'string' ? new Date(raw.timestamp).getTime() : (raw.timestamp as number) ?? Date.now(),
+          channel: (raw.channel as ChatMessage['channel']) ?? 'global',
+          target_id: (raw.target_id as string) ?? undefined,
+        };
+        chatStore.addMessage(normalized);
+        // Also show in EventLog
+        const chLabel = normalized.channel.toUpperCase();
+        eventsStore.add({ type: 'chat', message: `[${chLabel}] ${normalized.sender_name}: ${normalized.message}` });
         break;
       }
 
@@ -748,8 +760,12 @@ class WebSocketService {
 
   // ---- Chat ----
 
-  sendChat(message: string, channel = 'global') {
-    this.send({ type: 'chat', payload: { message, channel } });
+  sendChat(message: string, channel = 'global', target?: string) {
+    const payload: Record<string, unknown> = { message, channel };
+    if (channel === 'private' && target) {
+      payload.target = target;
+    }
+    this.send({ type: 'chat', payload });
   }
 }
 

@@ -18,6 +18,60 @@
   import BaseTab from '$lib/components/tabs/BaseTab.svelte';
   import InfoTab from '$lib/components/tabs/InfoTab.svelte';
   import SettingsTab from '$lib/components/tabs/SettingsTab.svelte';
+
+  // ---- Resizable bottom panel ----
+  const STORAGE_KEY = 'sm_bottom_panel_ratio';
+  const MIN_EVENT_PCT = 20;
+  const MAX_EVENT_PCT = 80;
+
+  /** Percentage of the EventLog+Chat area that EventLog occupies */
+  let eventLogPct = $state(loadRatio());
+
+  function loadRatio(): number {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const v = Number(saved);
+        if (v >= MIN_EVENT_PCT && v <= MAX_EVENT_PCT) return v;
+      }
+    } catch { /* ignore */ }
+    return 60; // default: 60% EventLog, 40% Chat
+  }
+
+  function saveRatio(pct: number) {
+    try { localStorage.setItem(STORAGE_KEY, String(pct)); } catch { /* ignore */ }
+  }
+
+  let isDragging = $state(false);
+  let bottomPanelEl: HTMLDivElement | undefined = $state(undefined);
+
+  function onDragStart(e: MouseEvent) {
+    e.preventDefault();
+    isDragging = true;
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+  }
+
+  function onDragMove(e: MouseEvent) {
+    if (!isDragging || !bottomPanelEl) return;
+    const rect = bottomPanelEl.getBoundingClientRect();
+    // ActionQueue is 220px + gap on the right; compute available width for EventLog+Chat
+    const actionQueueWidth = 220 + 8; // width + gap
+    const availableWidth = rect.width - actionQueueWidth - 16; // subtract padding
+    const relativeX = e.clientX - rect.left - 8; // subtract left padding
+    let pct = (relativeX / availableWidth) * 100;
+    pct = Math.max(MIN_EVENT_PCT, Math.min(MAX_EVENT_PCT, pct));
+    eventLogPct = Math.round(pct);
+  }
+
+  function onDragEnd() {
+    isDragging = false;
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    saveRatio(eventLogPct);
+  }
+
+  let gridColumns = $derived(`${eventLogPct}fr 4px ${100 - eventLogPct}fr 220px`);
 </script>
 
 {#if !authStore.isLoggedIn}
@@ -59,8 +113,20 @@
       {/if}
     </main>
 
-    <div class="bottom-panel">
+    <div
+      class="bottom-panel"
+      class:dragging={isDragging}
+      bind:this={bottomPanelEl}
+      style="grid-template-columns: {gridColumns};"
+    >
       <EventLog />
+      <div
+        class="resize-handle"
+        onmousedown={onDragStart}
+        role="separator"
+        aria-orientation="vertical"
+        tabindex="-1"
+      ></div>
       <ChatPanel />
       <ActionQueue />
     </div>
@@ -80,5 +146,25 @@
     overflow-y: auto;
     padding: 12px 16px;
     background: #060a10;
+  }
+
+  /* ---- Resize handle ---- */
+  .resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: rgba(79, 195, 247, 0.12);
+    border-radius: 2px;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+
+  .resize-handle:hover,
+  .dragging .resize-handle {
+    background: rgba(79, 195, 247, 0.4);
+  }
+
+  /* Prevent text selection while dragging */
+  .dragging {
+    user-select: none;
   }
 </style>

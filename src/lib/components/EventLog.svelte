@@ -9,6 +9,7 @@
     { label: 'Trade',  value: 'trade' },
     { label: 'Nav',    value: 'nav' },
     { label: 'System', value: 'system' },
+    { label: 'Chat',   value: 'chat' },
     { label: 'Error',  value: 'error' }
   ];
 
@@ -22,19 +23,87 @@
   let cmdInput = $state('');
 
   const HELP_TEXT = [
-    '/help               — このヘルプを表示',
-    '/scan               — 周辺スキャン',
-    '/status             — プレイヤーステータス取得',
-    '/system             — システム情報取得',
-    '/jump <system_id>   — 別システムへジャンプ',
-    '/travel <poi_id>    — POIへ移動',
-    '/dock <station_id>  — ステーションにドック',
-    '/undock             — ドック解除',
-    '/mine <poi_id>      — 採掘開始',
-    '/chat <msg>         — グローバルチャットに送信',
-    '{ ... }             — 生のJSONコマンドを送信',
-    '<その他>            — ローカルチャットとして送信',
+    '/help                     — このヘルプを表示',
+    '/<command>                — ゲームコマンドを送信 (例: /get_status)',
+    '/<command> key: value ... — payload付きコマンド送信',
+    '  例: /help command: travel',
+    '  例: /travel target_poi: frontier_belt',
+    '  例: /chat message: hello channel: global',
+    '  例: /create_buy_order item_id: ore_iron quantity: 10 price_each: 5',
+    '{ ... }                   — 生のJSONコマンドを送信',
   ].join('\n');
+
+  /**
+   * Parse slash command into a WS message.
+   * Format: /type key1: value1 key2: value2
+   * Auto-detects numeric values.
+   */
+  function parseSlashCommand(raw: string): { type: string; payload?: Record<string, unknown> } {
+    // Remove leading /
+    const content = raw.slice(1);
+
+    // Split by key: value pattern
+    // First token is the command type, rest are key: value pairs
+    const typeMatch = content.match(/^(\S+)/);
+    if (!typeMatch) return { type: content.trim() };
+
+    const type = typeMatch[1];
+    const rest = content.slice(type.length).trim();
+
+    if (!rest) return { type };
+
+    // Parse "key: value" pairs
+    // Pattern: word followed by colon, then value (until next key: or end)
+    const payload: Record<string, unknown> = {};
+    const pairRegex = /(\w+)\s*:\s*/g;
+    const keys: { key: string; start: number }[] = [];
+
+    let match;
+    while ((match = pairRegex.exec(rest)) !== null) {
+      keys.push({ key: match[1], start: match.index + match[0].length });
+    }
+
+    for (let i = 0; i < keys.length; i++) {
+      const start = keys[i].start;
+      const end = i + 1 < keys.length ? keys[i + 1].start - keys[i + 1].key.length - 1 : rest.length;
+      // Find the position of the next key pattern (key:) to extract the value
+      const rawEnd = i + 1 < keys.length
+        ? rest.lastIndexOf(keys[i + 1].key, end)
+        : rest.length;
+      let value: string = rest.slice(start, rawEnd).trim();
+
+      // Auto-convert numbers and booleans
+      const parsed = autoConvert(value);
+      payload[keys[i].key] = parsed;
+    }
+
+    // If no key: value pairs found, treat rest as simple positional arg
+    if (keys.length === 0) {
+      // Try splitting as simple key=value pairs (fallback)
+      const simpleTokens = rest.split(/\s+/);
+      for (const token of simpleTokens) {
+        if (token.includes('=')) {
+          const [k, ...vParts] = token.split('=');
+          payload[k] = autoConvert(vParts.join('='));
+        }
+      }
+      if (Object.keys(payload).length === 0) {
+        // Single argument – no clear key, return as-is in a generic field
+        return { type, payload: { args: rest } };
+      }
+    }
+
+    return { type, payload };
+  }
+
+  function autoConvert(value: string): unknown {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (value === 'null') return null;
+    const num = Number(value);
+    if (!isNaN(num) && value !== '') return num;
+    return value;
+  }
 
   function handleCommand() {
     const raw = cmdInput.trim();
@@ -56,56 +125,24 @@
       return;
     }
 
-    // Slash commands
+    // Slash commands → game commands
     if (raw.startsWith('/')) {
       const parts = raw.slice(1).split(/\s+/);
       const cmd = parts[0].toLowerCase();
-      const args = parts.slice(1);
 
-      switch (cmd) {
-        case 'help':
-          eventsStore.add({ type: 'info', message: HELP_TEXT });
-          break;
-        case 'scan':
-          ws.scan();
-          break;
-        case 'status':
-          ws.getStatus();
-          break;
-        case 'system':
-          ws.getSystem();
-          break;
-        case 'jump':
-          if (args[0]) ws.jump(args[0], args[1]);
-          else eventsStore.add({ type: 'error', message: '使い方: /jump <system_id>' });
-          break;
-        case 'travel':
-          if (args[0]) ws.travel(args[0]);
-          else eventsStore.add({ type: 'error', message: '使い方: /travel <poi_id>' });
-          break;
-        case 'dock':
-          if (args[0]) ws.dock(args[0]);
-          else eventsStore.add({ type: 'error', message: '使い方: /dock <station_id>' });
-          break;
-        case 'undock':
-          ws.undock();
-          break;
-        case 'mine':
-          if (args[0]) ws.mine(args[0]);
-          else eventsStore.add({ type: 'error', message: '使い方: /mine <poi_id>' });
-          break;
-        case 'chat':
-          if (args.length > 0) ws.sendChat(args.join(' '));
-          else eventsStore.add({ type: 'error', message: '使い方: /chat <message>' });
-          break;
-        default:
-          eventsStore.add({ type: 'error', message: `不明なコマンド: /${cmd}  (/help で一覧表示)` });
+      if (cmd === 'help' && parts.length === 1) {
+        // Local help (no args) shows command format help
+        eventsStore.add({ type: 'info', message: HELP_TEXT });
+        return;
       }
+
+      const parsed = parseSlashCommand(raw);
+      ws.send(parsed.payload ? { type: parsed.type, payload: parsed.payload } : { type: parsed.type });
       return;
     }
 
-    // Plain text → send as local chat
-    ws.sendChat(raw, 'local');
+    // Plain text → send as raw JSON (user should use /chat command)
+    eventsStore.add({ type: 'info', message: 'ヒント: /chat message: テキスト channel: global でチャット送信' });
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -149,7 +186,7 @@
     <input
       class="cmd-input"
       type="text"
-      placeholder="コマンドまたはチャット  (/help で一覧)"
+      placeholder="/command key: value  (/help で書式表示)"
       bind:value={cmdInput}
       onkeydown={onKeyDown}
       spellcheck="false"
@@ -236,6 +273,7 @@
   .event-trade  .msg { color: #66bb6a; }
   .event-nav    .msg { color: #42a5f5; }
   .event-system .msg { color: #ab47bc; }
+  .event-chat   .msg { color: #80cbc4; }
   .event-error  .msg { color: #ef5350; }
   .event-info   .msg { color: #607d8b; }
 
