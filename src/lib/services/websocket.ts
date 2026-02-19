@@ -21,6 +21,7 @@ import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
+import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
 
 // All server messages use { type, payload: {...} }.
@@ -587,6 +588,54 @@ class WebSocketService {
           factionStore.viewedFactionLoading = false;
           break;
         }
+        // Mission responses
+        // get_missions: { missions: [...], base_name, base_id }
+        {
+          const raw = msg.payload as Record<string, unknown>;
+          if (raw.base_name && Array.isArray(raw.missions)) {
+            missionStore.setAvailable(raw.missions as unknown[], raw.base_name as string, raw.base_id as string);
+            // Chain: get_missions ok → get_active_missions (avoid concurrent queries)
+            this.getActiveMissions();
+            break;
+          }
+          // get_active_missions: { missions: [...] | null, total_count, max_missions }
+          if (raw.max_missions !== undefined) {
+            missionStore.setActive(raw.missions as unknown[] | null, raw.max_missions as number);
+            break;
+          }
+        }
+        if (pl.action === 'accept_mission') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Mission accepted' });
+          // Chain: refresh available first, then active follows automatically
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
+          break;
+        }
+        if (pl.action === 'complete_mission') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Mission completed!' });
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
+          break;
+        }
+        if (pl.action === 'abandon_mission') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Mission abandoned' });
+          if (playerStore.isDocked) {
+            this.getMissions();
+          } else {
+            this.getActiveMissions();
+          }
+          break;
+        }
+        if (pl.action === 'decline_mission') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Mission declined' });
+          break;
+        }
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -989,6 +1038,34 @@ class WebSocketService {
   cancelOrder(orderId: string) { this.send({ type: 'cancel_order', payload: { order_id: orderId } }); }
   modifyOrder(orderId: string, newPrice: number) {
     this.send({ type: 'modify_order', payload: { order_id: orderId, new_price: newPrice } });
+  }
+
+  // ---- Missions ----
+
+  getMissions() {
+    missionStore.loadingAvailable = true;
+    this.send({ type: 'get_missions' });
+  }
+
+  getActiveMissions() {
+    missionStore.loadingActive = true;
+    this.send({ type: 'get_active_missions' });
+  }
+
+  acceptMission(missionId: string) {
+    this.send({ type: 'accept_mission', payload: { mission_id: missionId } });
+  }
+
+  completeMission(missionId: string) {
+    this.send({ type: 'complete_mission', payload: { mission_id: missionId } });
+  }
+
+  abandonMission(missionId: string) {
+    this.send({ type: 'abandon_mission', payload: { mission_id: missionId } });
+  }
+
+  declineMission(templateId: string) {
+    this.send({ type: 'decline_mission', payload: { template_id: templateId } });
   }
 
   // ---- Ships ----

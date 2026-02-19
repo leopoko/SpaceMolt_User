@@ -465,24 +465,67 @@ export interface Skill {
 
 // ---- Missions ----
 
+export interface MissionGiver {
+  name: string;
+  title?: string;
+}
+
+export interface MissionDialog {
+  offer?: string;
+  accept?: string;
+  decline?: string;
+  complete?: string;
+}
+
+export interface MissionRewards {
+  credits: number;
+  skill_xp?: Record<string, number>;
+  items?: CargoItem[];
+}
+
 export interface Mission {
   id: string;
+  mission_id?: string;
+  template_id?: string;
   title: string;
   description: string;
+  type?: string;
   difficulty: number;
+  // Rewards: server sends as { credits, skill_xp } object
+  rewards?: MissionRewards;
+  // Flattened reward fields (normalized from rewards object)
   reward_credits: number;
   reward_items: CargoItem[];
+  reward_xp?: Record<string, number>;
+  requirements?: Record<string, unknown>;
   status: MissionStatus;
   objectives: MissionObjective[];
   expires_at: number | null;
+  expires_in_ticks?: number;
+  time_limit?: number;
+  accepted_at?: string;
+  // Giver: server sends as { name, title } object
+  giver?: MissionGiver;
+  giver_name?: string;
+  // Dialog: server sends as { offer, decline, ... } object
+  dialog?: MissionDialog;
+  giver_dialog?: string;
+  decline_dialog?: string;
+  destination?: string;
+  destination_name?: string;
+  repeatable?: boolean;
+  chain_next?: string;
 }
 
 export interface MissionObjective {
-  id: string;
+  id?: string;
   description: string;
-  target: number;
-  current: number;
-  complete: boolean;
+  type?: string;
+  target?: number;
+  current?: number;
+  complete?: boolean;
+  item_id?: string;
+  item_name?: string;
 }
 
 // ---- Achievements ----
