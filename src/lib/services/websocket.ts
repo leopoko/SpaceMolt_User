@@ -1,7 +1,8 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, TargetScanResult, MarketData, StorageData,
-  Faction, Recipe, FleetData, ChatMessage, EventLogEntry
+  Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
+  CatalogType, CatalogResponse
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -16,6 +17,7 @@ import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+import { catalogStore } from '$lib/stores/catalog.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -259,6 +261,25 @@ class WebSocketService {
             eventsStore.add({ type: 'nav', message: `Jumped to ${dest}` });
             this.getSystem();
           }
+        } else if (cmd === 'scan' && result) {
+          const scanResult: TargetScanResult = {
+            target_id: (result.target_id as string) ?? '',
+            success: (result.success as boolean) ?? false,
+            revealed_info: (result.revealed_info as string[] | null) ?? null,
+            tick: pl.tick,
+            username: result.username as string | undefined,
+            ship_class: result.ship_class as string | undefined,
+            cloaked: result.cloaked as boolean | undefined,
+            hull: result.hull as number | undefined,
+            shield: result.shield as number | undefined,
+            faction_id: result.faction_id as string | undefined,
+          };
+          combatStore.setTargetScan(scanResult);
+          if (scanResult.success) {
+            eventsStore.add({ type: 'combat', message: `Scan complete: ${scanResult.username ?? scanResult.target_id}` });
+          } else {
+            eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
+          }
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -448,33 +469,9 @@ class WebSocketService {
         break;
       }
 
-      case 'action_result': {
-        const pl = p<{ command?: string; tick?: number; result?: Record<string, unknown> }>(msg);
-        if (pl.command === 'scan' && pl.result) {
-          const scanResult: TargetScanResult = {
-            target_id: (pl.result.target_id as string) ?? '',
-            success: (pl.result.success as boolean) ?? false,
-            revealed_info: (pl.result.revealed_info as string[] | null) ?? null,
-            tick: pl.tick,
-            username: pl.result.username as string | undefined,
-            ship_class: pl.result.ship_class as string | undefined,
-            cloaked: pl.result.cloaked as boolean | undefined,
-            hull: pl.result.hull as number | undefined,
-            shield: pl.result.shield as number | undefined,
-            faction_id: pl.result.faction_id as string | undefined,
-          };
-          combatStore.setTargetScan(scanResult);
-          if (scanResult.success) {
-            eventsStore.add({ type: 'combat', message: `Scan complete: ${scanResult.username ?? scanResult.target_id}` });
-          } else {
-            eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
-          }
-        } else {
-          if (pl.result) {
-            const resultMsg = (pl.result.message as string) ?? `${pl.command ?? 'Action'} complete`;
-            eventsStore.add({ type: 'info', message: resultMsg });
-          }
-        }
+      case 'catalog_result': {
+        const pl = p<CatalogResponse>(msg);
+        catalogStore.handleResponse(pl);
         break;
       }
 
@@ -528,6 +525,8 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
+        } else if (pl.action === 'catalog') {
+          catalogStore.handleResponse(pl as unknown as CatalogResponse);
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
         }
@@ -669,6 +668,13 @@ class WebSocketService {
   getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', payload: { faction: factionId } }); }
   declareWar(factionId: string) { this.send({ type: 'declare_war', payload: { faction: factionId } }); }
   proposePeace(factionId: string) { this.send({ type: 'propose_peace', payload: { faction: factionId } }); }
+
+  // ---- Catalog ----
+
+  catalog(type: CatalogType, opts?: { id?: string; category?: string; search?: string; page?: number; page_size?: number }) {
+    catalogStore.setLoading(type, true);
+    this.send({ type: 'catalog', payload: { type, ...opts } });
+  }
 
   // ---- Chat ----
 
