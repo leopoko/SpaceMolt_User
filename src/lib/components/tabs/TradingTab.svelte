@@ -1,8 +1,9 @@
 <script lang="ts">
   import MarketSubTab from './trading/MarketSubTab.svelte';
   import MissionSubTab from './trading/MissionSubTab.svelte';
+  import MemoSubTab from './trading/MemoSubTab.svelte';
 
-  type SubTab = 'market' | 'mission';
+  type SubTab = 'market' | 'memo' | 'mission';
   let activeSubTab = $state<SubTab>('market');
 </script>
 
@@ -18,6 +19,14 @@
     </button>
     <button
       class="sub-tab-btn"
+      class:active={activeSubTab === 'memo'}
+      onclick={() => (activeSubTab = 'memo')}
+    >
+      <span class="material-icons" style="font-size:14px">bookmark</span>
+      Memo
+    </button>
+    <button
+      class="sub-tab-btn"
       class:active={activeSubTab === 'mission'}
       onclick={() => (activeSubTab = 'mission')}
     >
@@ -29,6 +38,8 @@
   <div class="sub-tab-content">
     {#if activeSubTab === 'market'}
       <MarketSubTab />
+    {:else if activeSubTab === 'memo'}
+      <MemoSubTab />
     {:else if activeSubTab === 'mission'}
       <MissionSubTab />
     {/if}

@@ -8,8 +8,30 @@
   import { shipStore } from '$lib/stores/ship.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
+  import { storageMemoStore } from '$lib/stores/storageMemo.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+
+  function saveStorageMemo() {
+    if (!baseStore.currentBase || !baseStore.storageData) return;
+    storageMemoStore.save(
+      baseStore.currentBase.name,
+      baseStore.currentBase.id,
+      baseStore.items,
+      baseStore.credits,
+      baseStore.capacity,
+      baseStore.capacityUsed,
+      baseStore.currentBase,
+    );
+  }
+
+  let currentStorageMemo = $derived(
+    baseStore.currentBase ? storageMemoStore.getMemo(baseStore.currentBase.name) : null
+  );
+
+  function formatFacility(id: string): string {
+    return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
 
   let depositItemId = $state('');
   let depositQty = $state(1);
@@ -271,6 +293,15 @@
       <Content>
         <div class="section-head">
           <span class="tab-section-title">Station</span>
+          {#if baseStore.storageData}
+            <button class="memo-btn" onclick={saveStorageMemo} title="Save storage snapshot as memo">
+              <span class="material-icons" style="font-size:14px">bookmark</span>
+              Memo
+            </button>
+            {#if currentStorageMemo}
+              <span class="memo-saved-hint">Saved {new Date(currentStorageMemo.savedAt).toLocaleTimeString()}</span>
+            {/if}
+          {/if}
           <button class="icon-btn" onclick={loadStorage}>↻</button>
         </div>
 
@@ -330,6 +361,15 @@
             <div class="services">
               {#each baseStore.serviceList as svc}
                 <span class="service-chip">{svc}</span>
+              {/each}
+            </div>
+          {/if}
+
+          {#if baseStore.currentBase.facilities && baseStore.currentBase.facilities.length > 0}
+            <p class="tab-section-title" style="margin-top:12px">Facilities</p>
+            <div class="services">
+              {#each baseStore.currentBase.facilities as fac}
+                <span class="facility-chip">{formatFacility(fac)}</span>
               {/each}
             </div>
           {/if}
@@ -585,7 +625,7 @@
   .section-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     margin-bottom: 8px;
   }
 
@@ -658,6 +698,36 @@
     border-radius: 12px;
     color: #4fc3f7;
     text-transform: capitalize;
+  }
+
+  .facility-chip {
+    font-size: 0.6rem;
+    padding: 2px 7px;
+    background: rgba(255,152,0,0.08);
+    border: 1px solid rgba(255,152,0,0.2);
+    border-radius: 10px;
+    color: #ff9800;
+  }
+
+  .memo-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(255, 215, 0, 0.08);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    color: #ffd700;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: auto;
+  }
+  .memo-btn:hover { background: rgba(255, 215, 0, 0.16); }
+
+  .memo-saved-hint {
+    font-size: 0.58rem;
+    color: #546e7a;
   }
 
   .storage-table {
