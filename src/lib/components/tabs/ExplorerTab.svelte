@@ -173,17 +173,23 @@
   // ---- Tunable size multipliers ----
   let sunSize = $state(0.22);
   let planetSize = $state(0.11);
+  let stationSize = $state(0.08);
+  let nebulaSize = $state(0.13);
+  let gasCloudSize = $state(0.11);
+  let iceFieldSize = $state(0.10);
+  let asteroidSize = $state(0.15);
+  let defaultSize = $state(0.07);
   let showSizePanel = $state(false);
 
   function dotRadius(type: string, s: number): number {
     switch (type) {
       case 'sun': return s * sunSize;
       case 'planet': return s * planetSize;
-      case 'station': return s * 0.08;
-      case 'nebula': return s * 0.13;
-      case 'gas_cloud': return s * 0.11;
-      case 'ice_field': return s * 0.10;
-      default: return s * 0.07;
+      case 'station': return s * stationSize;
+      case 'nebula': return s * nebulaSize;
+      case 'gas_cloud': return s * gasCloudSize;
+      case 'ice_field': return s * iceFieldSize;
+      default: return s * defaultSize;
     }
   }
 
@@ -263,7 +269,10 @@
   let viewBox = $derived(`${camX - viewW / 2} ${camY - viewH / 2} ${viewW} ${viewH}`);
 
   // ---- Scale for POI rendering within the map ----
-  let poiVisualScale = $derived(viewW * 0.012);
+  // Fixed in world-space so POI sizes don't change with zoom.
+  let poiVisualScale = $derived(poiScale * 1.0);
+  // Separate zoom-dependent scale for system labels (so they stay readable at all zoom levels)
+  let labelScale = $derived(viewW * 0.015);
 
   // ---- Fetch map data ----
   async function fetchMapData() {
@@ -501,6 +510,36 @@
         <input type="range" min="0.02" max="0.5" step="0.01" bind:value={planetSize} />
         <span class="size-val">{planetSize.toFixed(2)}</span>
       </div>
+      <div class="size-row">
+        <span class="size-label">Station</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={stationSize} />
+        <span class="size-val">{stationSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Nebula</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={nebulaSize} />
+        <span class="size-val">{nebulaSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Gas</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={gasCloudSize} />
+        <span class="size-val">{gasCloudSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Ice</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={iceFieldSize} />
+        <span class="size-val">{iceFieldSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Asteroid</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={asteroidSize} />
+        <span class="size-val">{asteroidSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Other</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={defaultSize} />
+        <span class="size-val">{defaultSize.toFixed(2)}</span>
+      </div>
     </div>
   {/if}
 
@@ -572,6 +611,7 @@
         {@const sysY = sys.map.y}
         {@const sc = poiVisualScale}
         {@const sw = sc * 0.6}
+        {@const ls = labelScale}
         {@const mappedPois = sys.memo.pois.filter(p => p.position)}
         {@const orbits = computeOrbits(mappedPois, poiScale)}
 
@@ -656,7 +696,7 @@
             {@const rockCount = lodRockCount()}
             {@const rocks = computeBeltRocks(
               poi, sysX, sysY, sys.map.id, isHome, poiScale,
-              rockCount, sc * 0.15,
+              rockCount, sc * asteroidSize,
               camX - viewW / 2, camY - viewH / 2, viewW, viewH
             )}
             {#each rocks as rock}
@@ -685,14 +725,14 @@
           {/if}
         {/each}
 
-        <!-- System name label -->
+        <!-- System name label (zoom-dependent for readability) -->
         <text
           x={sysX}
-          y={sysY - sc * 3.5}
+          y={sysY - ls * 3.5}
           text-anchor="middle"
           dominant-baseline="auto"
           fill={isCurrent ? '#4caf50' : isHome ? '#ffd740' : secColor(sys.memo.securityLevel)}
-          font-size={sc * 1.8}
+          font-size={ls * 1.8}
           font-weight={isCurrent || isHome ? '700' : '400'}
           font-family="'Roboto', sans-serif"
           style="pointer-events:none"
@@ -702,11 +742,11 @@
         {#if isHome}
           <text
             x={sysX}
-            y={sysY - sc * 5.5}
+            y={sysY - ls * 5.5}
             text-anchor="middle"
             dominant-baseline="auto"
             fill="#ffd740"
-            font-size={sc * 1.5}
+            font-size={ls * 1.5}
             font-family="'Material Icons'"
             style="pointer-events:none"
           >home</text>
@@ -716,11 +756,11 @@
         {#if isCurrent}
           <circle
             cx={sysX} cy={sysY}
-            r={sc * 2.5}
+            r={ls * 2.5}
             fill="none"
             stroke="#4caf50"
-            stroke-width={sw * 0.25}
-            stroke-dasharray="{sc * 0.5} {sc * 0.3}"
+            stroke-width={ls * 0.15}
+            stroke-dasharray="{ls * 0.5} {ls * 0.3}"
             opacity="0.5"
           >
             <animate attributeName="stroke-opacity" values="0.5;0.15;0.5" dur="3s" repeatCount="indefinite" />
@@ -730,11 +770,11 @@
         <!-- Online count -->
         {#if sys.map.online > 0}
           <text
-            x={sysX + sc * 3}
-            y={sysY - sc * 3}
+            x={sysX + ls * 3}
+            y={sysY - ls * 3}
             text-anchor="start"
             fill="#4fc3f7"
-            font-size={sc * 1.2}
+            font-size={ls * 1.2}
             font-family="'Roboto Mono', monospace"
             opacity="0.8"
             style="pointer-events:none"
@@ -849,7 +889,7 @@
     color: #78909c;
     font-size: 0.65rem;
     font-family: 'Roboto Mono', monospace;
-    width: 40px;
+    width: 56px;
   }
 
   .size-row input[type="range"] {
