@@ -232,6 +232,53 @@ class WebSocketService {
         break;
       }
 
+      case 'action_result': {
+        const pl = p<{ command?: string; tick?: number; result?: Record<string, unknown> }>(msg);
+        const cmd = pl.command;
+        const result = pl.result;
+        if (cmd === 'travel' && result) {
+          if (result.action === 'arrived') {
+            const poiName = (result.poi as string) ?? '';
+            const poiId = (result.poi_id as string) ?? null;
+            systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+            if (poiId) {
+              playerStore.update({ current_poi: poiId, poi_id: poiId });
+            }
+            eventsStore.add({ type: 'nav', message: `Arrived at ${poiName}` });
+            this.getSystem();
+          }
+        } else if (cmd === 'jump' && result) {
+          if (result.action === 'arrived' || result.action === 'jumped') {
+            const dest = (result.system_name as string) ?? (result.system as string) ?? '';
+            systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+            eventsStore.add({ type: 'nav', message: `Jumped to ${dest}` });
+            this.getSystem();
+          }
+        } else {
+          // Generic action_result: log if there's useful info
+          const action = result?.action as string ?? cmd ?? '';
+          const message = (result?.message as string) ?? '';
+          if (message) {
+            eventsStore.add({ type: 'info', message });
+          } else if (action) {
+            eventsStore.add({ type: 'info', message: `Action complete: ${action}` });
+          }
+        }
+        break;
+      }
+
+      case 'action_error': {
+        const pl = p<{ command?: string; tick?: number; code?: string; message?: string }>(msg);
+        const cmd = pl.command;
+        const errMsg = pl.message ?? pl.code ?? 'Action failed';
+        // Clear travel state on travel/jump errors
+        if (cmd === 'travel' || cmd === 'jump') {
+          systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+        }
+        eventsStore.add({ type: 'error', message: errMsg });
+        break;
+      }
+
       case 'arrived':
       case 'jumped': {
         const pl = p<{ system_name?: string; destination?: string }>(msg);
@@ -391,7 +438,7 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; message?: string; system?: Record<string, unknown>; poi?: Record<string, unknown> }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown> }>(msg);
         if (pl.action === 'get_system' && pl.system) {
           const raw = pl.system as Record<string, unknown>;
           // Normalize POIs: server sends online/has_base/base_id/base_name
