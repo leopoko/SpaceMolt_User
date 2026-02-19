@@ -1,6 +1,6 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
-  CombatEvent, ScanResult, TargetScanResult, MarketData, StorageData,
+  CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition
@@ -420,7 +420,7 @@ class WebSocketService {
       }
 
       case 'orders_data': {
-        const pl = p<{ orders?: never[] }>(msg);
+        const pl = p<{ orders?: MyOrder[] }>(msg);
         marketStore.setMyOrders(pl.orders ?? []);
         break;
       }
@@ -506,7 +506,17 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown> }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[] }>(msg);
+        if (pl.action === 'view_market' && pl.items) {
+          marketStore.setData({ base: pl.base ?? '', items: pl.items });
+          // Chain: request own orders after market data arrives
+          this.viewOrders();
+          break;
+        }
+        if (pl.action === 'view_orders' && pl.orders) {
+          marketStore.setMyOrders(pl.orders);
+          break;
+        }
         if (pl.action === 'get_system' && pl.system) {
           const raw = pl.system as Record<string, unknown>;
           // Normalize POIs: server sends online/has_base/base_id/base_name
@@ -677,17 +687,17 @@ class WebSocketService {
     this.send({ type: 'sell', payload: { item: itemId, quantity, price } });
   }
 
-  createBuyOrder(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'create_buy_order', payload: { item: itemId, quantity, price } });
+  createBuyOrder(itemId: string, quantity: number, priceEach: number) {
+    this.send({ type: 'create_buy_order', payload: { item_id: itemId, quantity, price_each: priceEach } });
   }
 
-  createSellOrder(itemId: string, quantity: number, price: number) {
-    this.send({ type: 'create_sell_order', payload: { item: itemId, quantity, price } });
+  createSellOrder(itemId: string, quantity: number, priceEach: number) {
+    this.send({ type: 'create_sell_order', payload: { item_id: itemId, quantity, price_each: priceEach } });
   }
 
-  cancelOrder(orderId: string) { this.send({ type: 'cancel_order', payload: { order: orderId } }); }
-  modifyOrder(orderId: string, price?: number, quantity?: number) {
-    this.send({ type: 'modify_order', payload: { order: orderId, price, quantity } });
+  cancelOrder(orderId: string) { this.send({ type: 'cancel_order', payload: { order_id: orderId } }); }
+  modifyOrder(orderId: string, newPrice: number) {
+    this.send({ type: 'modify_order', payload: { order_id: orderId, new_price: newPrice } });
   }
 
   // ---- Ships ----

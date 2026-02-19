@@ -5,6 +5,7 @@ export { shipStore } from './ship.svelte';
 export { systemStore } from './system.svelte';
 export { combatStore } from './combat.svelte';
 export { marketStore } from './market.svelte';
+export { marketMemoStore } from './marketMemo.svelte';
 export { craftingStore } from './crafting.svelte';
 export { factionStore } from './faction.svelte';
 export { baseStore } from './base.svelte';

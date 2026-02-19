@@ -317,6 +317,44 @@ export interface StorageGift {
 
 // ---- Market / Trading ----
 
+/** Individual order within a market item (from view_market) */
+export interface MarketOrderEntry {
+  price_each: number;
+  quantity: number;
+  source?: string; // "station" for NPC orders
+}
+
+/** A single item listing in the market (from view_market payload.items[]) */
+export interface MarketItem {
+  item_id: string;
+  item_name: string;
+  best_buy: number;   // highest buy order price (0 = no buy orders)
+  best_sell: number;   // lowest sell order price (0 = no sell orders)
+  spread?: number;
+  buy_orders: MarketOrderEntry[];
+  sell_orders: MarketOrderEntry[];
+}
+
+/** Full market data from view_market response */
+export interface MarketData {
+  base: string;        // station name e.g. "Frontier Station"
+  items: MarketItem[];
+}
+
+/** Player's own order (from view_orders) */
+export interface MyOrder {
+  order_id: string;
+  order_type: OrderType;
+  item_id: string;
+  item_name: string;
+  price_each: number;
+  quantity: number;
+  remaining: number;
+  listing_fee: number;
+  created_at: string;
+}
+
+/** Legacy flat listing – kept for backward compatibility */
 export interface MarketListing {
   id: string;
   item_id: string;
@@ -328,12 +366,6 @@ export interface MarketListing {
   owner_name: string;
   station_id: string;
   expires_at: number;
-}
-
-export interface MarketData {
-  station_id: string;
-  buy_orders: MarketListing[];
-  sell_orders: MarketListing[];
 }
 
 export interface MyOrders {

@@ -69,6 +69,7 @@ src/
     │   ├── system.svelte.ts   # スターシステム情報・POI・移動状態
     │   ├── combat.svelte.ts   # 戦闘状態・スキャン結果
     │   ├── market.svelte.ts   # マーケットデータ・注文
+    │   ├── marketMemo.svelte.ts # マーケットメモ（ステーション別、localStorage永続化）
     │   ├── base.svelte.ts     # ベースストレージ
     │   ├── crafting.svelte.ts # クラフト状態・レシピ
     │   ├── faction.svelte.ts  # ファクション情報
@@ -192,6 +193,77 @@ setFilter(f)            // フィルター変更
 
 EventType: `'combat' | 'trade' | 'nav' | 'system' | 'chat' | 'error' | 'info'`
 
+### marketStore
+```typescript
+data: MarketData | null        // view_market の結果（{ base, items[] }）
+myOrders: MyOrder[]            // view_orders の結果（自分のオーダー）
+
+// ゲッター
+items: MarketItem[]            // data.items（全マーケットアイテム）
+baseName: string               // ステーション名
+itemsForSale: MarketItem[]     // sell_ordersがあるアイテム
+itemsWanted: MarketItem[]      // buy_ordersがあるアイテム
+knownItems: { item_id, item_name }[]  // オートコンプリート用
+
+// MarketItem 構造:
+//   item_id, item_name, best_buy, best_sell, spread?
+//   buy_orders: { price_each, quantity, source? }[]
+//   sell_orders: { price_each, quantity, source? }[]
+
+// MyOrder 構造:
+//   order_id, order_type, item_id, item_name, price_each
+//   quantity, remaining, listing_fee, created_at
+```
+
+**注意:** `view_market` / `view_orders` の結果は `type: "ok"` で
+`payload.action: "view_market"` / `payload.action: "view_orders"` として返される。
+websocket.ts の `ok` ケースハンドラで処理。
+
+### marketMemoStore（マーケットメモ）
+
+マーケットのスナップショットをステーション別に `localStorage` へ保存。
+1ステーションにつき最新1件のみ保持。
+
+```typescript
+import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+
+// メモ保存（Memoボタン）
+marketMemoStore.save(marketStore.data);
+
+// 特定ステーションのメモ取得
+const memo = marketMemoStore.getMemo('Frontier Station');
+// memo = { base: "Frontier Station", items: MarketItem[], savedAt: "2026-02-19T..." }
+
+// 全メモ取得
+const all = marketMemoStore.allMemos; // MarketMemo[]
+
+// アイテムの価格をメモから検索（全ステーション横断、最新優先）
+const price = marketMemoStore.getItemPrice('ore_iron');
+// price = { item_id, item_name, best_buy, best_sell, station, savedAt }
+
+// 全アイテム価格一覧（item_id でユニーク、最新メモ優先）
+const prices = marketMemoStore.getAllItemPrices(); // ItemPriceInfo[]
+
+// メモ削除
+marketMemoStore.removeMemo('Frontier Station');
+```
+
+**localStorage キー:** `sm_market_memos`
+**データ構造:** `Record<string, MarketMemo>`（キー = base名）
+
+他のコンポーネント（カーゴビュー等）からメモ価格を参照する例:
+```typescript
+import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+
+// カーゴアイテムにメモ価格を表示
+for (const cargo of shipStore.cargo) {
+  const info = marketMemoStore.getItemPrice(cargo.item_id);
+  if (info) {
+    console.log(`${cargo.item_id}: Buy ₡${info.best_buy} / Sell ₡${info.best_sell} @ ${info.station}`);
+  }
+}
+```
+
 ---
 
 ## WebSocket サービス（websocket.ts）
@@ -228,7 +300,14 @@ ws.scan()
 ### 採掘・取引・艦船・クラフト
 ```typescript
 ws.mine(asteroidId)
-ws.viewMarket(stationId) / ws.buy(...) / ws.sell(...)
+ws.viewMarket(stationId)                        // Query: マーケット全アイテム取得
+ws.viewOrders()                                  // Query: 自分のオーダー取得
+ws.createBuyOrder(itemId, quantity, priceEach)    // Mutation: 買い注文作成（即時約定あり）
+ws.createSellOrder(itemId, quantity, priceEach)   // Mutation: 売り注文作成（即時約定あり）
+ws.cancelOrder(orderId)                           // Mutation: オーダーキャンセル
+ws.modifyOrder(orderId, newPrice)                 // Mutation: 価格変更
+ws.buy(itemId, quantity, price)                   // レガシー: 直接購入
+ws.sell(itemId, quantity, price)                  // レガシー: 直接販売
 ws.listShips() / ws.buyShip(type) / ws.switchShip(id)
 ws.craft(recipeId, quantity)
 ```
@@ -483,6 +562,24 @@ EventLog 下部の `›` プロンプトから手動コマンドを入力でき�
 6. **security_level の "null"**
    → 文字列の `"null"` = UNREGULATED（JavaScriptの `null` と異なる）
    → `secLabel: { null: 'UNREGULATED' }` で対処
+
+7. **Queryコマンドを同時に複数送信しない**
+   → サーバーは複数のQueryレスポンスを1つのWebSocketフレームに連結して返す場合がある
+   → 連結された JSON（例: `{...}{...}`）は `JSON.parse()` に失敗する
+   → **解決策:** レスポンスを受信してから次のQueryを送信する（チェーン方式）
+   → 例: `view_market` のレスポンスが来たら `view_orders` を送信する
+   ```typescript
+   // ✗ NG: 同時送信 → レスポンスが連結されてパース失敗
+   ws.viewMarket(stationId);
+   ws.viewOrders();
+
+   // ✓ OK: レスポンス受信後にチェーン
+   // websocket.ts の ok ハンドラ内:
+   if (pl.action === 'view_market') {
+     marketStore.setData(...);
+     this.viewOrders();  // view_market完了後に送信
+   }
+   ```
 
 ---
 
