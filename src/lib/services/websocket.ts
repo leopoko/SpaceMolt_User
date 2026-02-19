@@ -663,14 +663,14 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission declined' });
           break;
         }
-        // Scavenger: get_wrecks response
-        if (pl.action === 'get_wrecks' || (!pl.action && Array.isArray((msg.payload as Record<string, unknown>).wrecks) && !pl.command)) {
+        // Scavenger: get_wrecks response (may have empty/missing wrecks array)
+        if (pl.action === 'get_wrecks') {
           const raw = msg.payload as Record<string, unknown>;
-          const wrecks = (raw.wrecks as Array<Record<string, unknown>>) ?? [];
-          const normalized = wrecks.map(w => ({
+          const rawWrecks = Array.isArray(raw.wrecks) ? (raw.wrecks as Array<Record<string, unknown>>) : [];
+          const normalized = rawWrecks.map(w => ({
             id: (w.wreck_id as string) ?? (w.id as string) ?? '',
             ship_type: (w.ship_type as string) ?? (w.ship_class as string) ?? 'Unknown',
-            loot: (w.loot as Array<{ item_id: string; quantity: number; name?: string }>) ?? (w.items as Array<{ item_id: string; quantity: number; name?: string }>) ?? [],
+            loot: Array.isArray(w.loot) ? (w.loot as Array<{ item_id: string; quantity: number; name?: string }>) : Array.isArray(w.items) ? (w.items as Array<{ item_id: string; quantity: number; name?: string }>) : [],
             expires_at: (w.expires_at as number) ?? 0,
             owner: (w.owner as string) ?? (w.owner_name as string) ?? undefined,
             wreck_type: (w.wreck_type as string) ?? (w.type as string) ?? undefined,
