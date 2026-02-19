@@ -4,6 +4,8 @@
   import Textfield from '@smui/textfield';
   import { craftingStore } from '$lib/stores/crafting.svelte';
   import { shipStore } from '$lib/stores/ship.svelte';
+  import { baseStore } from '$lib/stores/base.svelte';
+  import { playerStore } from '$lib/stores/player.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
@@ -16,9 +18,14 @@
   const allRecipes = $derived(craftingStore.recipes);
   const categories = $derived(craftingStore.categories);
   const cargo = $derived(shipStore.cargo);
+  const storage = $derived(baseStore.items);
+  const isDocked = $derived(playerStore.isDocked);
 
-  // Set of item_ids in cargo for fast lookup
-  const cargoItemIds = $derived(new Set(cargo.map(c => c.item_id)));
+  // Set of item_ids available (cargo + storage) for fast lookup
+  const availableItemIds = $derived(new Set([
+    ...cargo.map(c => c.item_id),
+    ...storage.map(s => s.item_id),
+  ]));
 
   const filteredRecipes = $derived.by(() => {
     let list = allRecipes;
@@ -40,10 +47,10 @@
       );
     }
 
-    // Cargo filter: only recipes where at least one input is in cargo
+    // Material filter: only recipes where at least one input is available (cargo or storage)
     if (cargoOnly) {
       list = list.filter(r =>
-        (r.inputs ?? []).some(i => cargoItemIds.has(i.item_id))
+        (r.inputs ?? []).some(i => availableItemIds.has(i.item_id))
       );
     }
 
@@ -62,8 +69,17 @@
     return cargo.find(c => c.item_id === itemId)?.quantity ?? 0;
   }
 
+  function getStorageQty(itemId: string): number {
+    return storage.find(s => s.item_id === itemId)?.quantity ?? 0;
+  }
+
+  /** Total available = cargo + storage (server pulls from both) */
+  function getAvailableQty(itemId: string): number {
+    return getCargoQty(itemId) + (isDocked ? getStorageQty(itemId) : 0);
+  }
+
   function hasMaterial(itemId: string, required: number): boolean {
-    return getCargoQty(itemId) >= required;
+    return getAvailableQty(itemId) >= required;
   }
 
   /** Clamp count to 1-10 */
@@ -146,10 +162,10 @@
           class="cargo-toggle"
           class:active={cargoOnly}
           onclick={() => cargoOnly = !cargoOnly}
-          title="Show only recipes with materials in cargo"
+          title="Show only recipes with available materials"
         >
           <span class="material-icons toggle-icon">inventory_2</span>
-          <span class="toggle-label">Cargo</span>
+          <span class="toggle-label">Materials</span>
         </button>
       </div>
 
@@ -219,17 +235,24 @@
             {@const needed = input.quantity * totalMultiplier}
             {@const neededPerAction = input.quantity * clampedCount}
             {@const have = hasMaterial(input.item_id, neededPerAction)}
-            {@const qty = getCargoQty(input.item_id)}
+            {@const cargoQty = getCargoQty(input.item_id)}
+            {@const storageQty = isDocked ? getStorageQty(input.item_id) : 0}
+            {@const totalQty = cargoQty + storageQty}
             <div class="material-row" class:ok={have} class:missing={!have}>
-              <span class="mat-name">{formatItemId(input.item_id)}</span>
+              <span class="mat-name">
+                {formatItemId(input.item_id)}
+                {#if storageQty > 0}
+                  <span class="source-hint">({cargoQty}+{storageQty})</span>
+                {/if}
+              </span>
               <span class="mat-qty mono">
-                {qty}/{needed}
-                {#if qty >= needed}
+                {totalQty}/{needed}
+                {#if totalQty >= needed}
                   <span class="ok-badge">✓</span>
                 {:else if have}
                   <span class="ok-badge">~</span>
                 {:else}
-                  <span class="missing-badge">-{needed - qty}</span>
+                  <span class="missing-badge">-{needed - totalQty}</span>
                 {/if}
               </span>
             </div>
@@ -496,7 +519,13 @@
   .material-row.ok { background: rgba(76,175,80,0.06); }
   .material-row.missing { background: rgba(244,67,54,0.06); }
 
-  .mat-name { color: #90a4ae; }
+  .mat-name { color: #90a4ae; display: flex; flex-direction: column; gap: 1px; }
+
+  .source-hint {
+    font-size: 0.55rem;
+    color: #546e7a;
+    font-family: 'Roboto Mono', monospace;
+  }
   .mat-qty {
     font-family: 'Roboto Mono', monospace;
     font-size: 0.72rem;
