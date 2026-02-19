@@ -268,6 +268,24 @@
   // ---- Computed SVG viewBox ----
   let viewBox = $derived(`${camX - viewW / 2} ${camY - viewH / 2} ${viewW} ${viewH}`);
 
+  // ---- Actual visible SVG extent (accounts for widescreen / non-square containers) ----
+  // With preserveAspectRatio="xMidYMid meet" and a square viewBox,
+  // the visible area extends beyond the viewBox on the wider axis.
+  let visibleSvgW = $derived.by(() => {
+    if (!containerEl) return viewW;
+    const rect = containerEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return viewW;
+    const s = Math.min(rect.width / viewW, rect.height / viewH);
+    return rect.width / s;
+  });
+  let visibleSvgH = $derived.by(() => {
+    if (!containerEl) return viewH;
+    const rect = containerEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return viewH;
+    const s = Math.min(rect.width / viewW, rect.height / viewH);
+    return rect.height / s;
+  });
+
   // ---- Scale for POI rendering within the map ----
   // Fixed in world-space so POI sizes don't change with zoom.
   let poiVisualScale = $derived(poiScale * 1.0);
@@ -697,7 +715,7 @@
             {@const rocks = computeBeltRocks(
               poi, sysX, sysY, sys.map.id, isHome, poiScale,
               rockCount, sc * asteroidSize,
-              camX - viewW / 2, camY - viewH / 2, viewW, viewH
+              camX - visibleSvgW / 2, camY - visibleSvgH / 2, visibleSvgW, visibleSvgH
             )}
             {#each rocks as rock}
               <circle cx={rock.x} cy={rock.y} r={rock.r}
