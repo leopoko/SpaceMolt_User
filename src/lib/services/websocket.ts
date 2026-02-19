@@ -3,7 +3,8 @@ import type {
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
   CatalogType, CatalogResponse,
-  BaseInfo, BaseCondition
+  BaseInfo, BaseCondition,
+  ForumThread, ForumReply, ForumCategory
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -13,13 +14,14 @@ import { systemStore } from '$lib/stores/system.svelte';
 import { combatStore } from '$lib/stores/combat.svelte';
 import { marketStore } from '$lib/stores/market.svelte';
 import { craftingStore } from '$lib/stores/crafting.svelte';
-import { factionStore } from '$lib/stores/faction.svelte';
+import { factionStore, type FactionListItem, type FactionInvite } from '$lib/stores/faction.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
+import { forumStore } from '$lib/stores/forum.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -494,7 +496,19 @@ class WebSocketService {
 
       case 'faction_info': {
         const pl = p<Faction>(msg);
-        factionStore.update(pl);
+        // If the returned faction matches player's faction, update own data
+        // Otherwise it's a viewed faction
+        if (pl.id && playerStore.faction_id && pl.id === playerStore.faction_id) {
+          factionStore.update(pl);
+        } else if (pl.id && !playerStore.faction_id) {
+          // Player not in a faction, this is a viewed faction
+          factionStore.setViewedFaction(pl);
+        } else if (pl.id && pl.id !== playerStore.faction_id) {
+          factionStore.setViewedFaction(pl);
+        } else {
+          // Default: update own faction data
+          factionStore.update(pl);
+        }
         break;
       }
 
@@ -538,7 +552,18 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[] }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; total_count?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string; factions?: unknown[]; invites?: unknown[]; faction_id?: string; faction?: Record<string, unknown> }>(msg);
+        // faction_info: payload has id + tag + name but no threads/factions/items
+        if (!pl.action && (pl as Record<string, unknown>).id && (pl as Record<string, unknown>).tag && !pl.threads && !pl.factions && !pl.items) {
+          const f = pl as unknown as Faction;
+          if (playerStore.faction_id && f.id === playerStore.faction_id) {
+            factionStore.update(f);
+          } else {
+            factionStore.setViewedFaction(f);
+          }
+          factionStore.viewedFactionLoading = false;
+          break;
+        }
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -547,6 +572,112 @@ class WebSocketService {
         }
         if (pl.action === 'view_orders' && pl.orders) {
           marketStore.setMyOrders(pl.orders);
+          break;
+        }
+        // Forum responses (may come with action field or without)
+        if ((pl.action === 'forum_list' || (!pl.action && pl.threads && pl.per_page !== undefined)) && pl.threads) {
+          forumStore.setThreadList({
+            threads: pl.threads,
+            page: pl.page ?? 1,
+            total: pl.total ?? 0,
+            per_page: pl.per_page ?? 20,
+            categories: pl.categories,
+          });
+          break;
+        }
+        if ((pl.action === 'forum_get_thread' || (!pl.action && pl.thread)) && pl.thread) {
+          forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
+          break;
+        }
+        if ((pl.action === 'forum_create_thread' || pl.action === 'forum_create') && pl.thread_id) {
+          forumStore.addMyThread({
+            id: pl.thread_id,
+            title: pl.title ?? '',
+            category: 'general',
+            created_at: new Date().toISOString(),
+          });
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Thread created' });
+          // Refresh thread list
+          this.forumList(forumStore.page);
+          break;
+        }
+        if (pl.action === 'forum_reply' && pl.reply_id) {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Reply posted' });
+          // Refresh current thread
+          if (pl.thread_id) this.forumGetThread(pl.thread_id);
+          break;
+        }
+        if (pl.action === 'forum_delete_thread' && pl.thread_id) {
+          forumStore.removeMyThread(pl.thread_id);
+          forumStore.clearCurrentThread();
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Thread deleted' });
+          this.forumList(forumStore.page);
+          break;
+        }
+        if (pl.action === 'forum_delete_reply') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Reply deleted' });
+          if (forumStore.currentThread) this.forumGetThread(forumStore.currentThread.id);
+          break;
+        }
+        if (pl.action === 'forum_upvote') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Upvoted' });
+          if (forumStore.currentThread) this.forumGetThread(forumStore.currentThread.id);
+          break;
+        }
+        // Faction responses
+        if ((pl.action === 'faction_list' || (!pl.action && pl.factions && Array.isArray(pl.factions))) && pl.factions) {
+          factionStore.setFactionList(pl.factions as FactionListItem[], pl.total_count ?? pl.total ?? 0);
+          break;
+        }
+        if (pl.action === 'faction_get_invites' && pl.invites) {
+          factionStore.setInvites(pl.invites as FactionInvite[]);
+          break;
+        }
+        if (pl.action === 'create_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Faction created!' });
+          // Refresh own faction info
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'join_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Joined faction!' });
+          this.getFactionInfo();
+          this.factionGetInvites();
+          break;
+        }
+        if (pl.action === 'leave_faction') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Left faction' });
+          factionStore.update(null as unknown as Faction);
+          factionStore.reset();
+          break;
+        }
+        if (pl.action === 'faction_decline_invite') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Invite declined' });
+          this.factionGetInvites();
+          break;
+        }
+        if (pl.action === 'faction_invite') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Invite sent' });
+          break;
+        }
+        if (pl.action === 'faction_kick') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Player kicked' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_promote') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Role updated' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_edit') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Faction updated' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_deposit_credits') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Credits deposited' });
+          this.getFactionInfo();
           break;
         }
         if (pl.action === 'list_ships' || ((pl as Record<string, unknown>).active_ship_id && (pl as Record<string, unknown>).ships)) {
@@ -694,6 +825,30 @@ class WebSocketService {
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
         }
+        break;
+      }
+
+      case 'forum_list': {
+        const pl = p<{ threads: ForumThread[]; page: number; total: number; per_page: number; categories?: string[] }>(msg);
+        forumStore.setThreadList(pl);
+        break;
+      }
+
+      case 'forum_thread': {
+        const pl = p<{ thread: ForumThread; replies: ForumReply[] }>(msg);
+        forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
+        break;
+      }
+
+      case 'faction_list': {
+        const pl = p<{ factions: FactionListItem[]; total?: number; total_count?: number }>(msg);
+        factionStore.setFactionList(pl.factions ?? [], pl.total_count ?? pl.total);
+        break;
+      }
+
+      case 'faction_invites': {
+        const pl = p<{ invites: FactionInvite[] }>(msg);
+        factionStore.setInvites(pl.invites ?? []);
         break;
       }
 
@@ -845,15 +1000,108 @@ class WebSocketService {
 
   // ---- Faction ----
 
-  getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', payload: { faction: factionId } }); }
-  declareWar(factionId: string) { this.send({ type: 'declare_war', payload: { faction: factionId } }); }
-  proposePeace(factionId: string) { this.send({ type: 'propose_peace', payload: { faction: factionId } }); }
+  getFactionInfo(factionId?: string) {
+    if (factionId) {
+      this.send({ type: 'faction_info', payload: { faction_id: factionId } });
+    } else {
+      this.send({ type: 'faction_info' });
+    }
+  }
+  declareWar(factionId: string) { this.send({ type: 'faction_declare_war', payload: { target_faction_id: factionId } }); }
+  proposePeace(factionId: string) { this.send({ type: 'faction_propose_peace', payload: { target_faction_id: factionId } }); }
 
   // ---- Catalog ----
 
   catalog(type: CatalogType, opts?: { id?: string; category?: string; search?: string; page?: number; page_size?: number }) {
     catalogStore.setLoading(type, true);
     this.send({ type: 'catalog', payload: { type, ...opts } });
+  }
+
+  // ---- Forum ----
+
+  forumList(page = 1) {
+    forumStore.loading = true;
+    this.send({ type: 'forum_list', payload: { page } });
+  }
+
+  forumGetThread(threadId: string) {
+    forumStore.loadingThread = true;
+    this.send({ type: 'forum_get_thread', payload: { thread_id: threadId } });
+  }
+
+  forumCreateThread(title: string, content: string, category: ForumCategory = 'general') {
+    this.send({ type: 'forum_create_thread', payload: { title, content, category } });
+  }
+
+  forumReply(threadId: string, content: string) {
+    this.send({ type: 'forum_reply', payload: { thread_id: threadId, content } });
+  }
+
+  forumDeleteThread(threadId: string) {
+    this.send({ type: 'forum_delete_thread', payload: { thread_id: threadId } });
+  }
+
+  forumDeleteReply(replyId: string) {
+    this.send({ type: 'forum_delete_reply', payload: { reply_id: replyId } });
+  }
+
+  forumUpvote(threadId: string, replyId?: string) {
+    const payload: Record<string, string> = { thread_id: threadId };
+    if (replyId) payload.reply_id = replyId;
+    this.send({ type: 'forum_upvote', payload });
+  }
+
+  // ---- Faction (extended) ----
+
+  factionList(limit = 50, offset = 0) {
+    factionStore.factionListLoading = true;
+    this.send({ type: 'faction_list', payload: { limit, offset } });
+  }
+
+  createFaction(name: string, tag: string) {
+    this.send({ type: 'create_faction', payload: { name, tag } });
+  }
+
+  joinFaction(factionId: string) {
+    this.send({ type: 'join_faction', payload: { faction_id: factionId } });
+  }
+
+  leaveFaction() {
+    this.send({ type: 'leave_faction' });
+  }
+
+  factionGetInvites() {
+    factionStore.invitesLoading = true;
+    this.send({ type: 'faction_get_invites' });
+  }
+
+  factionDeclineInvite(factionId: string) {
+    this.send({ type: 'faction_decline_invite', payload: { faction_id: factionId } });
+  }
+
+  factionInvite(playerIdOrUsername: string) {
+    this.send({ type: 'faction_invite', payload: { player_id: playerIdOrUsername } });
+  }
+
+  factionKick(playerIdOrUsername: string) {
+    this.send({ type: 'faction_kick', payload: { player_id: playerIdOrUsername } });
+  }
+
+  factionPromote(playerIdOrUsername: string, roleId: string) {
+    this.send({ type: 'faction_promote', payload: { player_id: playerIdOrUsername, role_id: roleId } });
+  }
+
+  factionEdit(opts: { description?: string; charter?: string; primary_color?: string; secondary_color?: string }) {
+    this.send({ type: 'faction_edit', payload: opts });
+  }
+
+  factionDepositCredits(amount: number) {
+    this.send({ type: 'faction_deposit_credits', payload: { amount } });
+  }
+
+  factionViewInfo(factionId: string) {
+    factionStore.viewedFactionLoading = true;
+    this.send({ type: 'faction_info', payload: { faction_id: factionId } });
   }
 
   // ---- Chat ----

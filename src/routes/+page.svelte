@@ -14,7 +14,7 @@
   import TradingTab from '$lib/components/tabs/TradingTab.svelte';
   import ShipTab from '$lib/components/tabs/ShipTab.svelte';
   import CraftingTab from '$lib/components/tabs/CraftingTab.svelte';
-  import FactionTab from '$lib/components/tabs/FactionTab.svelte';
+  import CommunityTab from '$lib/components/tabs/CommunityTab.svelte';
   import BaseTab from '$lib/components/tabs/BaseTab.svelte';
   import InfoTab from '$lib/components/tabs/InfoTab.svelte';
   import SettingsTab from '$lib/components/tabs/SettingsTab.svelte';
@@ -210,8 +210,8 @@
         <ShipTab />
       {:else if uiStore.activeTab?.label === 'Crafting'}
         <CraftingTab />
-      {:else if uiStore.activeTab?.label === 'Faction'}
-        <FactionTab />
+      {:else if uiStore.activeTab?.label === 'Community'}
+        <CommunityTab />
       {:else if uiStore.activeTab?.label === 'Base'}
         <BaseTab />
       {:else if uiStore.activeTab?.label === 'Info'}
