@@ -7,6 +7,7 @@
   import { shipStore } from '$lib/stores/ship.svelte';
   import { baseStore } from '$lib/stores/base.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
+  import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
   import type { MarketItem, MarketOrderEntry } from '$lib/types/game';
 
@@ -28,6 +29,27 @@
 
   // Autocomplete
   let showSuggestions = $state(false);
+
+  // Set of item_ids the player owns (cargo + storage)
+  let ownedItemIds = $derived.by(() => {
+    const ids = new Set<string>();
+    for (const c of shipStore.cargo) ids.add(c.item_id);
+    for (const s of baseStore.items) ids.add(s.item_id);
+    return ids;
+  });
+
+  // Sorted market items: owned items first, then rest
+  let sortedMarketItems = $derived.by(() => {
+    const items = marketStore.items;
+    if (!items.length) return items;
+    const owned: MarketItem[] = [];
+    const rest: MarketItem[] = [];
+    for (const item of items) {
+      if (ownedItemIds.has(item.item_id)) owned.push(item);
+      else rest.push(item);
+    }
+    return [...owned, ...rest];
+  });
 
   // Build suggestion list from cargo + storage + market items
   let suggestions = $derived.by(() => {
@@ -93,7 +115,6 @@
   function loadMarket() {
     const stationId = playerStore.dockedAt ?? playerStore.poi_id ?? systemStore.stations[0]?.id;
     if (stationId) {
-      // view_orders is automatically chained after view_market response arrives
       ws.viewMarket(stationId);
     }
   }
@@ -104,13 +125,20 @@
     }
   }
 
+  function doRepair() {
+    actionQueueStore.enqueue('Repair', () => ws.repair());
+  }
+
+  function doRefuel() {
+    actionQueueStore.enqueue('Refuel', () => ws.refuel());
+  }
+
   function createOrder() {
     const itemName = orderItemInput.trim();
     const price = Number(orderPrice);
     const qty = Number(orderQty);
     if (!itemName || qty <= 0 || price <= 0) return;
 
-    // Resolve item_id: check if input matches an item_name in market/cargo, else use as-is
     let itemId = itemName;
     const marketMatch = marketStore.items.find(i => i.item_name.toLowerCase() === itemName.toLowerCase());
     if (marketMatch) {
@@ -134,19 +162,15 @@
     ws.cancelOrder(orderId);
   }
 
-  // Quick buy: create a buy order at the sell price (instant fill)
   function quickBuy(item: MarketItem, order: MarketOrderEntry) {
     ws.createBuyOrder(item.item_id, order.quantity, order.price_each);
   }
 
-  // Quick sell: create a sell order at the buy price (instant fill)
   function quickSell(item: MarketItem, order: MarketOrderEntry) {
     ws.createSellOrder(item.item_id, order.quantity, order.price_each);
   }
 
-  // Memo info
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
-
 </script>
 
 <div class="trading-layout">
@@ -155,6 +179,12 @@
     <Button variant="outlined" onclick={loadMarket}>
       <Label><span class="material-icons btn-icon">refresh</span> Refresh</Label>
     </Button>
+    <button class="svc-btn repair-btn" onclick={doRepair} title="Repair ship (requires docked + repair service)">
+      <span class="material-icons" style="font-size:15px">build</span> Repair
+    </button>
+    <button class="svc-btn refuel-btn" onclick={doRefuel} title="Refuel ship (credits at station, or fuel cells anywhere)">
+      <span class="material-icons" style="font-size:15px">local_gas_station</span> Refuel
+    </button>
     {#if marketStore.data}
       <button class="memo-btn" onclick={saveMemo} title="Save market data as memo">
         <span class="material-icons" style="font-size:16px">bookmark</span>
@@ -187,7 +217,7 @@
     <Card class="space-card">
       <Content>
         <p class="tab-section-title">Market – {marketStore.baseName}</p>
-        {#if marketStore.items.length > 0}
+        {#if sortedMarketItems.length > 0}
           <table class="market-table">
             <thead>
               <tr>
@@ -199,68 +229,58 @@
               </tr>
             </thead>
             <tbody>
-              {#each marketStore.items as item (item.item_id)}
+              {#each sortedMarketItems as item (item.item_id)}
+                {@const isOwned = ownedItemIds.has(item.item_id)}
                 <!-- Item summary row -->
-                <tr class="item-row" class:expanded={expandedItems.has(item.item_id)} onclick={() => toggleExpand(item.item_id)}>
+                <tr class="item-row" class:expanded={expandedItems.has(item.item_id)} class:owned-row={isOwned} onclick={() => toggleExpand(item.item_id)}>
                   <td class="expand-icon">
                     <span class="material-icons" style="font-size:14px">
                       {expandedItems.has(item.item_id) ? 'expand_more' : 'chevron_right'}
                     </span>
                   </td>
-                  <td class="item-name">{item.item_name}</td>
+                  <td class="item-name">
+                    {item.item_name}
+                    {#if isOwned}<span class="owned-badge">OWNED</span>{/if}
+                  </td>
                   <td class="num mono buy-price">{item.best_buy > 0 ? `₡${item.best_buy.toLocaleString()}` : '—'}</td>
                   <td class="num mono sell-price">{item.best_sell > 0 ? `₡${item.best_sell.toLocaleString()}` : '—'}</td>
                   <td class="num mono dim">{item.spread != null ? `₡${item.spread.toLocaleString()}` : '—'}</td>
                 </tr>
 
-                <!-- Expanded detail -->
+                <!-- Expanded detail: Buy Orders under Best Buy, Sell Orders under Best Sell -->
                 {#if expandedItems.has(item.item_id)}
                   <tr class="detail-row">
-                    <td colspan="5">
-                      <div class="detail-grid">
-                        <!-- Buy orders (things wanted – you can sell to these) -->
-                        <div class="detail-section">
-                          <p class="detail-title buy-label">Buy Orders (Sell to)</p>
-                          {#if item.buy_orders.length > 0}
-                            <table class="detail-table">
-                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
-                              <tbody>
-                                {#each item.buy_orders as order}
-                                  <tr>
-                                    <td class="num mono buy-price">₡{order.price_each.toLocaleString()}</td>
-                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                    <td><button class="action-btn sell-btn" onclick={(e) => { e.stopPropagation(); quickSell(item, order); }}>Sell</button></td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
-                          {:else}
-                            <p class="detail-empty">No buy orders</p>
-                          {/if}
-                        </div>
-
-                        <!-- Sell orders (things for sale – you can buy from these) -->
-                        <div class="detail-section">
-                          <p class="detail-title sell-label">Sell Orders (Buy from)</p>
-                          {#if item.sell_orders.length > 0}
-                            <table class="detail-table">
-                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
-                              <tbody>
-                                {#each item.sell_orders as order}
-                                  <tr>
-                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
-                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
-                          {:else}
-                            <p class="detail-empty">No sell orders</p>
-                          {/if}
-                        </div>
-                      </div>
+                    <td></td>
+                    <td></td>
+                    <td class="detail-cell" colspan="1">
+                      <p class="detail-title buy-label">Buy Orders</p>
+                      {#if item.buy_orders.length > 0}
+                        {#each item.buy_orders as order}
+                          <div class="detail-order-row">
+                            <span class="mono buy-price">₡{order.price_each.toLocaleString()}</span>
+                            <span class="mono detail-qty">×{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</span>
+                            <button class="action-btn sell-btn" onclick={(e) => { e.stopPropagation(); quickSell(item, order); }}>Sell</button>
+                          </div>
+                        {/each}
+                      {:else}
+                        <p class="detail-empty">—</p>
+                      {/if}
                     </td>
+                    <td class="detail-cell" colspan="1">
+                      <p class="detail-title sell-label">Sell Orders</p>
+                      {#if item.sell_orders.length > 0}
+                        {#each item.sell_orders as order}
+                          <div class="detail-order-row">
+                            <span class="mono sell-price">₡{order.price_each.toLocaleString()}</span>
+                            <span class="mono detail-qty">×{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</span>
+                            <button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button>
+                          </div>
+                        {/each}
+                      {:else}
+                        <p class="detail-empty">—</p>
+                      {/if}
+                    </td>
+                    <td></td>
                   </tr>
                 {/if}
               {/each}
@@ -387,44 +407,84 @@
       </Card>
     </div>
 
-    <!-- Cargo with memo prices -->
-    {#if shipStore.cargo.length > 0}
-      <Card class="space-card" style="margin-top:12px">
-        <Content>
-          <p class="tab-section-title">Cargo</p>
-          <table class="market-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="num">Qty</th>
-                <th class="num">Memo Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each shipStore.cargo as c}
-                {@const mp = marketMemoStore.getItemPrice(c.item_id)}
+    <!-- Cargo + Storage with memo prices -->
+    <div class="bottom-grid">
+      {#if shipStore.cargo.length > 0}
+        <Card class="space-card">
+          <Content>
+            <p class="tab-section-title">Cargo</p>
+            <table class="market-table">
+              <thead>
                 <tr>
-                  <td>{c.name ?? c.item_id}</td>
-                  <td class="num mono">{c.quantity}</td>
-                  <td class="num mono">
-                    {#if mp && mp.best_buy > 0}
-                      <span class="buy-price">B:₡{mp.best_buy}</span>
-                    {/if}
-                    {#if mp && mp.best_sell > 0}
-                      {#if mp.best_buy > 0} / {/if}
-                      <span class="sell-price">S:₡{mp.best_sell}</span>
-                    {/if}
-                    {#if !mp || (mp.best_buy <= 0 && mp.best_sell <= 0)}
-                      <span class="dim">—</span>
-                    {/if}
-                  </td>
+                  <th>Item</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Memo Price</th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        </Content>
-      </Card>
-    {/if}
+              </thead>
+              <tbody>
+                {#each shipStore.cargo as c}
+                  {@const mp = marketMemoStore.getItemPrice(c.item_id)}
+                  <tr>
+                    <td>{c.name ?? c.item_id}</td>
+                    <td class="num mono">{c.quantity}</td>
+                    <td class="num mono">
+                      {#if mp && mp.best_buy > 0}
+                        <span class="buy-price">B:₡{mp.best_buy}</span>
+                      {/if}
+                      {#if mp && mp.best_sell > 0}
+                        {#if mp.best_buy > 0} / {/if}
+                        <span class="sell-price">S:₡{mp.best_sell}</span>
+                      {/if}
+                      {#if !mp || (mp.best_buy <= 0 && mp.best_sell <= 0)}
+                        <span class="dim">—</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </Content>
+        </Card>
+      {/if}
+
+      {#if baseStore.items.length > 0}
+        <Card class="space-card">
+          <Content>
+            <p class="tab-section-title">Stored Items</p>
+            <table class="market-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Memo Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each baseStore.items as s}
+                  {@const mp = marketMemoStore.getItemPrice(s.item_id)}
+                  <tr>
+                    <td>{s.name ?? s.item_id}</td>
+                    <td class="num mono">{s.quantity}</td>
+                    <td class="num mono">
+                      {#if mp && mp.best_buy > 0}
+                        <span class="buy-price">B:₡{mp.best_buy}</span>
+                      {/if}
+                      {#if mp && mp.best_sell > 0}
+                        {#if mp.best_buy > 0} / {/if}
+                        <span class="sell-price">S:₡{mp.best_sell}</span>
+                      {/if}
+                      {#if !mp || (mp.best_buy <= 0 && mp.best_sell <= 0)}
+                        <span class="dim">—</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </Content>
+        </Card>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -450,6 +510,31 @@
 
   .station-label { font-size: 0.72rem; color: #546e7a; }
   .credits-display { font-size: 0.82rem; color: #ffd700; margin-left: auto; }
+
+  .svc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid;
+    background: none;
+  }
+
+  .repair-btn {
+    color: #4caf50;
+    border-color: rgba(76,175,80,0.3);
+  }
+  .repair-btn:hover { background: rgba(76,175,80,0.1); }
+
+  .refuel-btn {
+    color: #ff9800;
+    border-color: rgba(255,152,0,0.3);
+  }
+  .refuel-btn:hover { background: rgba(255,152,0,0.1); }
 
   .memo-btn {
     display: inline-flex;
@@ -521,32 +606,39 @@
   .item-row:hover { background: rgba(79, 195, 247, 0.04); }
   .item-row.expanded { background: rgba(79, 195, 247, 0.06); }
 
+  .item-row.owned-row {
+    background: rgba(255, 215, 0, 0.04);
+  }
+  .item-row.owned-row:hover { background: rgba(255, 215, 0, 0.08); }
+
+  .owned-badge {
+    font-size: 0.5rem;
+    font-family: 'Roboto Mono', monospace;
+    color: #ffd700;
+    background: rgba(255,215,0,0.12);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 2px;
+    padding: 0 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
   .expand-icon { color: #37474f; padding: 0 2px; }
   .item-name { font-weight: 500; color: #b0bec5; }
 
-  /* Detail rows */
+  /* Detail rows – aligned under Best Buy / Best Sell columns */
   .detail-row td {
     padding: 0;
     border-bottom: 1px solid rgba(79, 195, 247, 0.08);
+    vertical-align: top;
   }
 
-  .detail-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 8px 12px 12px 30px;
-  }
-
-  @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
-
-  .detail-section {
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    padding: 6px 8px;
+  .detail-cell {
+    padding: 6px 6px 8px !important;
   }
 
   .detail-title {
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -555,29 +647,23 @@
   .sell-label { color: #ff9800; }
   .buy-label { color: #4caf50; }
 
-  .detail-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.7rem;
+  .detail-order-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 0.68rem;
   }
-  .detail-table th {
-    text-align: right;
-    font-size: 0.58rem;
-    color: #37474f;
-    padding: 2px 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  .detail-table td {
-    padding: 2px 4px;
-    color: #90a4ae;
+
+  .detail-qty {
+    color: #78909c;
+    font-size: 0.65rem;
   }
 
   .detail-empty {
     font-size: 0.65rem;
     color: #263238;
-    text-align: center;
-    padding: 6px 0;
+    padding: 2px 0;
   }
 
   .source-tag {
@@ -592,11 +678,12 @@
     background: none;
     border: 1px solid rgba(255,255,255,0.1);
     color: #78909c;
-    font-size: 0.65rem;
-    padding: 2px 8px;
+    font-size: 0.6rem;
+    padding: 1px 6px;
     border-radius: 3px;
     cursor: pointer;
     transition: all 0.15s;
+    margin-left: auto;
   }
 
   .buy-btn { border-color: rgba(76,175,80,0.3); color: #4caf50; }

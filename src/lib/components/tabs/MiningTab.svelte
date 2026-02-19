@@ -83,56 +83,32 @@
             </div>
           {/each}
         </div>
-      {:else}
-        <p class="empty-hint">No asteroid fields detected.</p>
       {/if}
 
       <div class="mining-actions">
-        <Button
-          variant="raised"
-          onclick={doMine}
-          style="width:100%"
-        >
+        <Button variant="raised" onclick={doMine} style="width:100%">
           <Label>⛏ Mine</Label>
         </Button>
-      </div>
 
-      <p class="tab-section-title" style="margin-top:16px">Repeated Mining</p>
+        <div class="repeat-row">
+          <input type="number" class="repeat-input" min="1" max="999" bind:value={repeatCount} />
+          <Button variant="outlined" onclick={doMineRepeat} style="flex:1">
+            <Label>×{repeatCount} Mining</Label>
+          </Button>
+        </div>
 
-      <div class="repeat-row">
-        <input
-          type="number"
-          class="repeat-input"
-          min="1"
-          max="999"
-          bind:value={repeatCount}
-        />
-        <Button variant="outlined" onclick={doMineRepeat} style="flex:1">
-          <Label>×{repeatCount} Mining</Label>
+        <div class="repeat-row">
+          <input type="number" class="repeat-input" min="1" max="100" bind:value={targetPercent} />
+          <span class="pct-label">%</span>
+          <Button variant="outlined" onclick={doMineUntilPercent} style="flex:1">
+            <Label>Mine → {targetPercent}%</Label>
+          </Button>
+        </div>
+
+        <Button variant="outlined" onclick={doMineUntilFull} style="width:100%">
+          <Label>⛏ Mine → Full</Label>
         </Button>
       </div>
-
-      <div class="repeat-row">
-        <input
-          type="number"
-          class="repeat-input"
-          min="1"
-          max="100"
-          bind:value={targetPercent}
-        />
-        <span class="pct-label">%</span>
-        <Button variant="outlined" onclick={doMineUntilPercent} style="flex:1">
-          <Label>Mine → {targetPercent}%</Label>
-        </Button>
-      </div>
-
-      <Button
-        variant="outlined"
-        onclick={doMineUntilFull}
-        style="width:100%; margin-top:4px"
-      >
-        <Label>⛏ Mine → Full</Label>
-      </Button>
     </Content>
   </Card>
 
