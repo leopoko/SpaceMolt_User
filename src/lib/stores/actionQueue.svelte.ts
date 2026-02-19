@@ -2,23 +2,33 @@ import { eventsStore } from '$lib/stores/events.svelte';
 
 let _nextId = 0;
 
+/**
+ * Only serializable fields live in $state to avoid the Svelte 5
+ * state_proxy_equality_mismatch warning that arises when functions
+ * are stored inside a $state-proxied object.
+ * The actual execute callbacks are kept in a plain Map outside of $state.
+ */
 export interface QueuedAction {
   id: number;
   label: string;
-  execute: () => void;
 }
 
 class ActionQueueStore {
   items = $state<QueuedAction[]>([]);
   /** Tracks the last tick number for which we executed an action (avoids double-fire). */
   private lastExecutedTick = -1;
+  /** Plain Map – NOT in $state – so function refs stay unproxied. */
+  private executors = new Map<number, () => void>();
 
   enqueue(label: string, execute: () => void) {
-    this.items = [...this.items, { id: ++_nextId, label, execute }];
+    const id = ++_nextId;
+    this.executors.set(id, execute);
+    this.items = [...this.items, { id, label }];
     eventsStore.add({ type: 'info', message: `[Queue] 追加: ${label} (${this.items.length}件)` });
   }
 
   remove(id: number) {
+    this.executors.delete(id);
     this.items = this.items.filter(a => a.id !== id);
   }
 
@@ -51,9 +61,11 @@ class ActionQueueStore {
     this.lastExecutedTick = tick;
     const [first, ...rest] = this.items;
     this.items = rest;
+    const execute = this.executors.get(first.id);
+    this.executors.delete(first.id);
     eventsStore.add({ type: 'info', message: `[Queue] 実行: ${first.label}` });
     try {
-      first.execute();
+      execute?.();
     } catch (e) {
       console.error('[ActionQueue] execute failed:', e);
       eventsStore.add({ type: 'error', message: `[Queue] エラー: ${first.label}` });
@@ -61,6 +73,7 @@ class ActionQueueStore {
   }
 
   clear() {
+    this.executors.clear();
     this.items = [];
   }
 }
