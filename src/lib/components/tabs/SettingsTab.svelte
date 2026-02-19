@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Button, { Label } from '@smui/button';
   import Card, { Content } from '@smui/card';
   import Textfield from '@smui/textfield';
@@ -7,11 +8,28 @@
   import { connectionStore } from '$lib/stores/connection.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
+  import { mapSettingsStore } from '$lib/stores/mapSettings.svelte';
   import { ws } from '$lib/services/websocket';
 
   let serverUrl = $state(connectionStore.serverUrl);
   let savedUser = $state(authStore.savedUsername);
   let savedPass = $state(authStore.savedPassword);
+
+  // Local state for bind:checked — SMUI Switch renders <button>, native 'change' never fires
+  let darkMode = $state(uiStore.darkMode);
+  let showTravelAnim = $state(mapSettingsStore.showTravelAnim);
+  let showPlayerWaves = $state(mapSettingsStore.showPlayerWaves);
+  let showOrbitLines = $state(mapSettingsStore.showOrbitLines);
+  let showGrid = $state(mapSettingsStore.showGrid);
+  let rockDensity = $state(mapSettingsStore.rockDensity);
+
+  // Sync local → store (untrack prevents cross-field deps through persist())
+  $effect(() => { const v = darkMode;        untrack(() => uiStore.setDarkMode(v)); });
+  $effect(() => { const v = showTravelAnim;  untrack(() => mapSettingsStore.setShowTravelAnim(v)); });
+  $effect(() => { const v = showPlayerWaves; untrack(() => mapSettingsStore.setShowPlayerWaves(v)); });
+  $effect(() => { const v = showOrbitLines;  untrack(() => mapSettingsStore.setShowOrbitLines(v)); });
+  $effect(() => { const v = showGrid;        untrack(() => mapSettingsStore.setShowGrid(v)); });
+  $effect(() => { const v = rockDensity;     untrack(() => mapSettingsStore.setRockDensity(v)); });
 
   function reconnect() {
     ws.disconnect();
@@ -31,10 +49,6 @@
     authStore.clearCredentials();
     savedUser = '';
     savedPass = '';
-  }
-
-  function toggleDarkMode() {
-    uiStore.setDarkMode(!uiStore.darkMode);
   }
 </script>
 
@@ -125,10 +139,7 @@
           <span class="setting-desc">Space-themed dark interface</span>
         </div>
         <FormField>
-          <Switch
-            checked={uiStore.darkMode}
-            onchange={toggleDarkMode}
-          />
+          <Switch bind:checked={darkMode} />
         </FormField>
       </div>
 
@@ -146,6 +157,65 @@
           <span class="setting-desc">Server game tick</span>
         </div>
         <span class="mono tick-val">{connectionStore.tick}</span>
+      </div>
+    </Content>
+  </Card>
+
+  <!-- System Map -->
+  <Card class="space-card">
+    <Content>
+      <p class="tab-section-title">System Map</p>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Asteroid Density</span>
+          <span class="setting-desc">Rock count per belt ({rockDensity})</span>
+        </div>
+        <input
+          type="range" min="40" max="640" step="40"
+          bind:value={rockDensity}
+          class="range-input"
+        />
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Travel Animation</span>
+          <span class="setting-desc">Moving dots along travel path</span>
+        </div>
+        <FormField>
+          <Switch bind:checked={showTravelAnim} />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Player Waves</span>
+          <span class="setting-desc">Ripple effect at POIs with players</span>
+        </div>
+        <FormField>
+          <Switch bind:checked={showPlayerWaves} />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Orbit Lines</span>
+          <span class="setting-desc">Dashed orbital circles</span>
+        </div>
+        <FormField>
+          <Switch bind:checked={showOrbitLines} />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Grid Lines</span>
+          <span class="setting-desc">Background grid overlay</span>
+        </div>
+        <FormField>
+          <Switch bind:checked={showGrid} />
+        </FormField>
       </div>
     </Content>
   </Card>
@@ -217,6 +287,12 @@
   .setting-desc { font-size: 0.68rem; color: #4a6070; margin-top: 2px; }
 
   .tick-val { font-size: 0.78rem; color: #4fc3f7; }
+
+  .range-input {
+    width: 120px;
+    accent-color: #4fc3f7;
+    cursor: pointer;
+  }
 
   .about-block { display: flex; flex-direction: column; gap: 8px; }
   .about-title { font-size: 0.9rem; color: #4fc3f7; font-weight: 400; margin: 0; }

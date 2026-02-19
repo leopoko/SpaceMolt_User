@@ -197,6 +197,11 @@ class WebSocketService {
         if (systemStore.travel.in_progress) {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         }
+        // Stop action queue on error (e.g. mine no_resources)
+        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+          eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
+          actionQueueStore.clear();
+        }
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
         }
@@ -340,6 +345,11 @@ class WebSocketService {
           craftingStore.setLastResult(errMsg);
         }
         eventsStore.add({ type: 'error', message: errMsg });
+        // Stop action queue on action failure
+        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+          eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
+          actionQueueStore.clear();
+        }
         break;
       }
 
@@ -749,6 +759,8 @@ class WebSocketService {
             name: rp.name as string,
             type: rp.type as string,
             player_count: (rp.online as number) ?? (rp.player_count as number) ?? 0,
+            position: rp.position as { x: number; y: number } | undefined,
+            online: (rp.online as number) ?? 0,
             base: rp.has_base ? {
               id: (rp.base_id as string) ?? '',
               name: (rp.base_name as string) ?? '',

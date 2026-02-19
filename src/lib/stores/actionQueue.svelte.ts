@@ -33,6 +33,17 @@ class ActionQueueStore {
     }
   }
 
+  /** Insert as the next action to execute (front of queue). */
+  enqueueNext(label: string, execute: () => void) {
+    const id = ++_nextId;
+    this.executors.set(id, execute);
+    this.items = [{ id, label }, ...this.items];
+    // If no action is currently executing, run immediately without waiting for next tick
+    if (!this.currentAction) {
+      this.executeNext();
+    }
+  }
+
   remove(id: number) {
     this.executors.delete(id);
     this.items = this.items.filter(a => a.id !== id);

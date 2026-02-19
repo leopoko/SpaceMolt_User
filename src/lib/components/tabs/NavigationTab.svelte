@@ -6,7 +6,47 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import SystemMap from '$lib/components/SystemMap.svelte';
   import { chatStore } from '$lib/stores/chat.svelte';
+
+  let nearbyOpen = $state(false);
+
+  // Walk the action queue (including currently executing action) to compute
+  // effective dock state and effective POI.
+  let effectivelyDocked = $derived.by(() => {
+    let docked = playerStore.isDocked;
+    const cur = actionQueueStore.currentAction;
+    if (cur === 'Undock') docked = false;
+    else if (cur?.startsWith('Dock @')) docked = true;
+    for (const item of actionQueueStore.items) {
+      if (item.label === 'Undock') docked = false;
+      else if (item.label.startsWith('Dock @')) docked = true;
+    }
+    return docked;
+  });
+
+  // Track where the player will effectively be after executing action + queued travels.
+  let effectivePoiId = $derived.by(() => {
+    let poiId = playerStore.poi_id;
+    const cur = actionQueueStore.currentAction;
+    if (cur) {
+      for (const poi of systemStore.pois) {
+        if (cur === `Travel → ${poi.name}`) {
+          poiId = poi.id;
+          break;
+        }
+      }
+    }
+    for (const item of actionQueueStore.items) {
+      for (const poi of systemStore.pois) {
+        if (item.label === `Travel → ${poi.name}`) {
+          poiId = poi.id;
+          break;
+        }
+      }
+    }
+    return poiId;
+  });
 
   const secColor: Record<string, string> = {
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
@@ -62,154 +102,224 @@
   });
 </script>
 
-<div class="two-col">
-  <!-- Current System Info + Points of Interest -->
-  <Card class="space-card">
-    <Content>
-      <div class="section-head">
-        <span class="tab-section-title">Current System</span>
-        <button class="icon-btn" onclick={refresh} title="Refresh">↻</button>
-      </div>
-
-      {#if systemStore.data}
-        <h2 class="system-name">{systemStore.name}</h2>
-        {@const sys = secDisplay(systemStore.securityLevel)}
-        <div class="sec-badge" style="color:{sys.color}">
-          Security: {systemStore.securityStatus ?? sys.label}
+<div class="nav-outer">
+  <div class="nav-grid">
+    <!-- Current System Info + Points of Interest (no Nearby Players) -->
+    <Card class="space-card">
+      <Content>
+        <div class="section-head">
+          <span class="tab-section-title">Current System</span>
+          <button class="icon-btn" onclick={refresh} title="Refresh">↻</button>
         </div>
-        {#if systemStore.data.description}
-          <p class="sys-desc">{systemStore.data.description}</p>
-        {/if}
 
-        <!-- Points of Interest with Travel / Dock / Undock actions -->
-        <p class="tab-section-title" style="margin-top:12px">Points of Interest</p>
-        {#if systemStore.pois.length > 0}
-          <div class="poi-list">
-            {#each systemStore.pois as poi}
-              {@const isHere = playerStore.poi_id === poi.id}
-              {@const isTravDest = systemStore.travel.in_progress && systemStore.travel.destination_id === poi.id}
-              <div class="poi-item" class:poi-current={isHere} class:poi-traveling={isTravDest}>
-                <div class="poi-left">
-                  <span class="material-icons poi-icon">{poiIcons[poi.type] ?? 'place'}</span>
-                  <div class="poi-info">
-                    <span class="poi-name">
-                      {poi.name}
-                      {#if isHere && playerStore.isDocked}<span class="here-chip">DOCKED</span>
-                      {:else if isHere}<span class="here-chip here-chip-active">HERE</span>
-                      {/if}
-                      {#if isTravDest}<span class="dest-chip">▶</span>{/if}
-                    </span>
-                    <span class="poi-sub">{poi.type} · {poi.player_count ?? poi.online ?? 0} online</span>
+        {#if systemStore.data}
+          <h2 class="system-name">{systemStore.name}</h2>
+          {@const sys = secDisplay(systemStore.securityLevel)}
+          <div class="sec-badge" style="color:{sys.color}">
+            Security: {systemStore.securityStatus ?? sys.label}
+          </div>
+          {#if systemStore.data.description}
+            <p class="sys-desc">{systemStore.data.description}</p>
+          {/if}
+
+          <!-- Points of Interest with Travel / Dock / Undock actions -->
+          <p class="tab-section-title" style="margin-top:12px">Points of Interest</p>
+          {#if systemStore.pois.length > 0}
+            <div class="poi-list">
+              {#each systemStore.pois as poi}
+                {@const isHere = playerStore.poi_id === poi.id}
+                {@const isTravDest = systemStore.travel.in_progress && systemStore.travel.destination_id === poi.id}
+                <div class="poi-item" class:poi-current={isHere} class:poi-traveling={isTravDest}>
+                  <div class="poi-left">
+                    <span class="material-icons poi-icon">{poiIcons[poi.type] ?? 'place'}</span>
+                    <div class="poi-info">
+                      <span class="poi-name">
+                        {poi.name}
+                        {#if isHere && playerStore.isDocked}<span class="here-chip">DOCKED</span>
+                        {:else if isHere}<span class="here-chip here-chip-active">HERE</span>
+                        {/if}
+                        {#if isTravDest}<span class="dest-chip">▶</span>{/if}
+                      </span>
+                      <span class="poi-sub">{poi.type} · {poi.player_count ?? poi.online ?? 0} online</span>
+                    </div>
                   </div>
-                </div>
-                <div class="poi-btns">
-                  {#if isHere && playerStore.isDocked}
-                    <!-- Player is docked here: show Undock -->
-                    <Button variant="outlined" dense onclick={doUndock}>
-                      <Label>Undock</Label>
-                    </Button>
-                  {:else}
-                    <!-- Travel to any POI -->
-                    <Button
-                      variant="outlined"
-                      dense
-                      disabled={systemStore.travel.in_progress || playerStore.isDocked}
-                      onclick={() => doTravel(poi.id, poi.name)}
-                    >
-                      <Label>Travel</Label>
-                    </Button>
-                    <!-- Dock only available for station-type POIs -->
-                    {#if poi.type === 'station'}
+                  <div class="poi-btns">
+                    {#if isHere && playerStore.isDocked && effectivelyDocked}
+                      <Button variant="outlined" dense onclick={doUndock}>
+                        <Label>Undock</Label>
+                      </Button>
+                    {:else}
                       <Button
                         variant="outlined"
                         dense
-                        disabled={playerStore.isDocked || systemStore.travel.in_progress}
-                        onclick={() => doDock(poi.id, poi.name)}
+                        disabled={effectivelyDocked}
+                        onclick={() => doTravel(poi.id, poi.name)}
                       >
-                        <Label>Dock</Label>
+                        <Label>Travel</Label>
                       </Button>
+                      {#if poi.type === 'station'}
+                        <Button
+                          variant="outlined"
+                          dense
+                          disabled={effectivelyDocked || effectivePoiId !== poi.id}
+                          onclick={() => doDock(poi.id, poi.name)}
+                        >
+                          <Label>Dock</Label>
+                        </Button>
+                      {/if}
                     {/if}
-                  {/if}
+                  </div>
                 </div>
-              </div>
-            {/each}
-          </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-hint">No POIs found</p>
+          {/if}
         {:else}
-          <p class="empty-hint">No POIs found</p>
+          <p class="empty-hint">No system data. Click Refresh.</p>
         {/if}
+      </Content>
+    </Card>
 
-        <!-- Nearby Players -->
-        {#if systemStore.nearbyPlayers.length > 0}
-          <p class="tab-section-title" style="margin-top:12px">Nearby Players</p>
-          <div class="player-list">
-            {#each systemStore.nearbyPlayers as np}
-              <div class="player-item">
-                <span class="material-icons" style="font-size:14px;color:{np.in_combat ? '#ff7043' : '#78909c'}"
-                >{np.in_combat ? 'local_fire_department' : 'person'}</span>
-                <span class="player-name">{np.username}</span>
-                <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
-                <button class="pm-btn" onclick={() => openPM(np.username)} title="Send PM to {np.username}">
-                  <span class="material-icons" style="font-size:13px">mail</span>
-                </button>
-              </div>
-            {/each}
+    <!-- Right column: Jump Destinations + System Map -->
+    <div class="right-col">
+      <Card class="space-card">
+        <Content>
+          <p class="tab-section-title">Jump Destinations</p>
+          {#if systemStore.connections.length > 0}
+            <div class="connection-list">
+              {#each systemStore.connections as conn}
+                {@const csec = secDisplay(conn.security_level)}
+                <div class="conn-item">
+                  <div class="conn-info">
+                    <span class="conn-name">{conn.system_name ?? '—'}</span>
+                    {#if conn.security_level != null}
+                      <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
+                    {/if}
+                    {#if conn.jump_cost != null}
+                      <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
+                    {/if}
+                    {#if conn.distance != null}
+                      <span class="conn-cost mono">Distance: {conn.distance}</span>
+                    {/if}
+                  </div>
+                  <Button
+                    variant="outlined"
+                    dense
+                    disabled={effectivelyDocked}
+                    onclick={() => doJump(conn.system_id, conn.system_name)}
+                  >
+                    <Label>Jump</Label>
+                  </Button>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-hint">No connections available</p>
+          {/if}
+
+          {#if systemStore.travel.in_progress}
+            <div class="traveling-notice">
+              ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
+              {#if systemStore.travel.arrival_tick !== null}
+                <br/>ETA: Tick {systemStore.travel.arrival_tick}
+              {/if}
+            </div>
+          {/if}
+        </Content>
+      </Card>
+
+      <!-- System Map: plain flex div so it fills remaining right-col height -->
+      {#if systemStore.data && systemStore.pois.length > 0}
+        <div class="map-section">
+          <p class="tab-section-title" style="margin:0">System Map</p>
+          <div class="map-wrap">
+            <SystemMap pois={systemStore.pois} />
           </div>
-        {/if}
-      {:else}
-        <p class="empty-hint">No system data. Click Refresh.</p>
+        </div>
       {/if}
-    </Content>
-  </Card>
+    </div>
+  </div>
 
-  <!-- Jump Destinations -->
-  <Card class="space-card">
-    <Content>
-      <p class="tab-section-title">Jump Destinations</p>
-      {#if systemStore.connections.length > 0}
-        <div class="connection-list">
-          {#each systemStore.connections as conn}
-            {@const csec = secDisplay(conn.security_level)}
-            <div class="conn-item">
-              <div class="conn-info">
-                <span class="conn-name">{conn.system_name ?? '—'}</span>
-                {#if conn.security_level != null}
-                  <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
-                {/if}
-                {#if conn.jump_cost != null}
-                  <span class="conn-cost mono">Fuel: {conn.jump_cost}</span>
-                {/if}
-                {#if conn.distance != null}
-                  <span class="conn-cost mono">Distance: {conn.distance}</span>
-                {/if}
-              </div>
-              <Button
-                variant="outlined"
-                dense
-                disabled={systemStore.travel.in_progress}
-                onclick={() => doJump(conn.system_id, conn.system_name)}
-              >
-                <Label>Jump</Label>
-              </Button>
+  <!-- Nearby Players: full-width row below the grid -->
+  {#if systemStore.nearbyPlayers.length > 0}
+    <div class="nearby-section">
+      <button class="nearby-toggle" onclick={() => nearbyOpen = !nearbyOpen}>
+        <span class="material-icons nearby-arrow" class:nearby-arrow-open={nearbyOpen}>expand_more</span>
+        <span class="tab-section-title" style="margin:0">Nearby Players ({systemStore.nearbyPlayers.length})</span>
+      </button>
+      {#if nearbyOpen}
+        <div class="player-list">
+          {#each systemStore.nearbyPlayers as np}
+            <div class="player-item">
+              <span class="material-icons" style="font-size:14px;color:{np.in_combat ? '#ff7043' : '#78909c'}"
+              >{np.in_combat ? 'local_fire_department' : 'person'}</span>
+              <span class="player-name">{np.username}</span>
+              <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
+              <button class="pm-btn" onclick={() => openPM(np.username)} title="Send PM to {np.username}">
+                <span class="material-icons" style="font-size:13px">mail</span>
+              </button>
             </div>
           {/each}
         </div>
-      {:else}
-        <p class="empty-hint">No connections available</p>
       {/if}
-
-      {#if systemStore.travel.in_progress}
-        <div class="traveling-notice">
-          ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
-          {#if systemStore.travel.arrival_tick !== null}
-            <br/>ETA: Tick {systemStore.travel.arrival_tick}
-          {/if}
-        </div>
-      {/if}
-    </Content>
-  </Card>
+    </div>
+  {/if}
 </div>
 
 <style>
+  .nav-outer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nav-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+  }
+
+  /* Map section: plain div styled like space-card, fills remaining right-col height */
+  .map-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--space-surface, #0d1525);
+    border: 1px solid rgba(79,195,247,0.18);
+    border-radius: 6px;
+    padding: 8px 12px 12px;
+  }
+
+  .map-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Nearby Players: full-width card below grid */
+  .nearby-section {
+    background: var(--space-surface, #0d1525);
+    border: 1px solid rgba(79,195,247,0.18);
+    border-radius: 6px;
+    padding: 4px 12px 8px;
+  }
+
+  @media (max-width: 600px) {
+    .nav-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   .section-head {
     display: flex;
     align-items: center;
@@ -361,6 +471,34 @@
   }
 
   /* ---- Nearby Players ---- */
+
+  .nearby-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 0;
+    margin-top: 12px;
+    width: 100%;
+    text-align: left;
+  }
+
+  .nearby-toggle:hover {
+    opacity: 0.8;
+  }
+
+  .nearby-arrow {
+    font-size: 18px;
+    color: #546e7a;
+    transition: transform 0.2s ease;
+    transform: rotate(-90deg);
+  }
+
+  .nearby-arrow-open {
+    transform: rotate(0deg);
+  }
 
   .player-list {
     display: flex;
