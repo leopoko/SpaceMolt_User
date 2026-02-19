@@ -723,26 +723,6 @@ export interface ForumThreadDetail {
 
 export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'factions' | 'strategies' | 'features' | string;
 
-// ---- Player-to-Player Trade ----
-
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'completed';
-
-/** Items in a trade offer: { item_id: quantity } */
-export type TradeItems = Record<string, number>;
-
-/** A trade offer (sent or received) */
-export interface TradeOffer {
-  trade_id: string;
-  offerer_id: string;
-  offerer_name: string;
-  target_id: string;
-  target_name: string;
-  credits: number;
-  items: TradeItems;
-  status: TradeStatus;
-  created_at?: number;
-}
-
 // ---- Game State (full snapshot) ----
 
 export interface GameState {
