@@ -1,7 +1,9 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
-  Faction, Recipe, FleetData, ChatMessage, EventLogEntry
+  Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
+  CatalogType, CatalogResponse,
+  BaseInfo, BaseCondition
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -16,11 +18,19 @@ import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+import { catalogStore } from '$lib/stores/catalog.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
 function p<T>(msg: WsMessage): T {
   return (msg.payload ?? msg) as T;
+}
+
+const CATALOG_TYPES = new Set(['ships', 'skills', 'recipes', 'items']);
+
+// Detect catalog responses: { type: "ok", payload: { type: "ships"|..., items: [...], total_pages: N } }
+function isCatalogResponse(pl: Record<string, unknown>): boolean {
+  return CATALOG_TYPES.has(pl.type as string) && Array.isArray(pl.items) && pl.total_pages !== undefined;
 }
 
 class WebSocketService {
@@ -259,6 +269,43 @@ class WebSocketService {
             eventsStore.add({ type: 'nav', message: `Jumped to ${dest}` });
             this.getSystem();
           }
+        } else if (cmd === 'scan' && result) {
+          const scanResult: TargetScanResult = {
+            target_id: (result.target_id as string) ?? '',
+            success: (result.success as boolean) ?? false,
+            revealed_info: (result.revealed_info as string[] | null) ?? null,
+            tick: pl.tick,
+            username: result.username as string | undefined,
+            ship_class: result.ship_class as string | undefined,
+            cloaked: result.cloaked as boolean | undefined,
+            hull: result.hull as number | undefined,
+            shield: result.shield as number | undefined,
+            faction_id: result.faction_id as string | undefined,
+          };
+          combatStore.setTargetScan(scanResult);
+          if (scanResult.success) {
+            eventsStore.add({ type: 'combat', message: `Scan complete: ${scanResult.username ?? scanResult.target_id}` });
+          } else {
+            eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
+          }
+        } else if (cmd === 'deposit_credits' && result) {
+          const amount = (result.amount as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Deposited ₡${amount.toLocaleString()} to station` });
+          this.viewStorage();
+        } else if (cmd === 'withdraw_credits' && result) {
+          const amount = (result.amount as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Withdrew ₡${amount.toLocaleString()} from station` });
+          this.viewStorage();
+        } else if (cmd === 'deposit_items' && result) {
+          const itemId = (result.item_id as string) ?? '';
+          const qty = (result.quantity as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Deposited ${qty}x ${itemId} to station` });
+          this.viewStorage();
+        } else if (cmd === 'withdraw_items' && result) {
+          const itemId = (result.item_id as string) ?? '';
+          const qty = (result.quantity as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
+          this.viewStorage();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -308,12 +355,16 @@ class WebSocketService {
           poi_id: pl.station_id ?? null,
           docked_at_base: pl.station_id ?? null
         });
+        // Auto-load station info and storage when docked
+        this.getBase();
+        this.viewStorage();
         break;
       }
 
       case 'undocked': {
         eventsStore.add({ type: 'nav', message: 'Undocked' });
         playerStore.update({ status: 'active', poi_id: null, docked_at_base: null });
+        baseStore.reset();
         break;
       }
 
@@ -448,33 +499,9 @@ class WebSocketService {
         break;
       }
 
-      case 'action_result': {
-        const pl = p<{ command?: string; tick?: number; result?: Record<string, unknown> }>(msg);
-        if (pl.command === 'scan' && pl.result) {
-          const scanResult: TargetScanResult = {
-            target_id: (pl.result.target_id as string) ?? '',
-            success: (pl.result.success as boolean) ?? false,
-            revealed_info: (pl.result.revealed_info as string[] | null) ?? null,
-            tick: pl.tick,
-            username: pl.result.username as string | undefined,
-            ship_class: pl.result.ship_class as string | undefined,
-            cloaked: pl.result.cloaked as boolean | undefined,
-            hull: pl.result.hull as number | undefined,
-            shield: pl.result.shield as number | undefined,
-            faction_id: pl.result.faction_id as string | undefined,
-          };
-          combatStore.setTargetScan(scanResult);
-          if (scanResult.success) {
-            eventsStore.add({ type: 'combat', message: `Scan complete: ${scanResult.username ?? scanResult.target_id}` });
-          } else {
-            eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
-          }
-        } else {
-          if (pl.result) {
-            const resultMsg = (pl.result.message as string) ?? `${pl.command ?? 'Action'} complete`;
-            eventsStore.add({ type: 'info', message: resultMsg });
-          }
-        }
+      case 'catalog_result': {
+        const pl = p<CatalogResponse>(msg);
+        catalogStore.handleResponse(pl);
         break;
       }
 
@@ -537,6 +564,36 @@ class WebSocketService {
           // Also update currentPoi if provided
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
+          }
+        } else if (isCatalogResponse(pl)) {
+          catalogStore.handleResponse(pl as unknown as CatalogResponse);
+        } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
+          // Query response: view_storage — detected by action field or by base_id+items presence
+          const raw = msg.payload as Record<string, unknown>;
+          const storageData: StorageData = {
+            station_id: (raw.station_id as string) ?? (raw.base_id as string) ?? '',
+            base_id: (raw.base_id as string) ?? (raw.station_id as string) ?? '',
+            station_name: (raw.station_name as string) ?? '',
+            items: (raw.items as StorageData['items']) ?? [],
+            credits: (raw.credits as number) ?? 0,
+            capacity: (raw.capacity as number) ?? undefined,
+            capacity_used: (raw.capacity_used as number) ?? undefined,
+            ships: (raw.ships as StorageData['ships']) ?? [],
+            gifts: (raw.gifts as StorageData['gifts']) ?? [],
+          };
+          baseStore.setStorage(storageData);
+        } else if (pl.action === 'get_base' || (msg.payload as Record<string, unknown>)?.base) {
+          // Query response: get_base — detected by action field or by base field presence
+          const raw = msg.payload as Record<string, unknown>;
+          const base = raw.base as BaseInfo;
+          const condition = raw.condition as BaseCondition | undefined;
+          if (base && base.name) {
+            baseStore.setBase(base, condition);
+          }
+        } else if (pl.pending) {
+          // Mutation accepted, will execute on next tick
+          if (pl.message) {
+            eventsStore.add({ type: 'info', message: pl.message });
           }
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
@@ -659,16 +716,18 @@ class WebSocketService {
     this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
   }
 
-  // ---- Storage ----
+  // ---- Storage / Base ----
 
-  viewStorage(stationId: string) { this.send({ type: 'view_storage', payload: { station: stationId } }); }
+  getBase() { this.send({ type: 'get_base' }); }
 
-  depositItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'deposit_items', payload: { items } });
+  viewStorage() { this.send({ type: 'view_storage' }); }
+
+  depositItems(itemId: string, quantity: number) {
+    this.send({ type: 'deposit_items', payload: { item_id: itemId, quantity } });
   }
 
-  withdrawItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'withdraw_items', payload: { items } });
+  withdrawItems(itemId: string, quantity: number) {
+    this.send({ type: 'withdraw_items', payload: { item_id: itemId, quantity } });
   }
 
   depositCredits(amount: number) { this.send({ type: 'deposit_credits', payload: { amount } }); }
@@ -679,6 +738,13 @@ class WebSocketService {
   getFactionInfo(factionId: string) { this.send({ type: 'get_faction_info', payload: { faction: factionId } }); }
   declareWar(factionId: string) { this.send({ type: 'declare_war', payload: { faction: factionId } }); }
   proposePeace(factionId: string) { this.send({ type: 'propose_peace', payload: { faction: factionId } }); }
+
+  // ---- Catalog ----
+
+  catalog(type: CatalogType, opts?: { id?: string; category?: string; search?: string; page?: number; page_size?: number }) {
+    catalogStore.setLoading(type, true);
+    this.send({ type: 'catalog', payload: { type, ...opts } });
+  }
 
   // ---- Chat ----
 
