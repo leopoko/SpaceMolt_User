@@ -172,13 +172,13 @@
 
   function dotRadius(type: string, s: number): number {
     switch (type) {
-      case 'sun': return s * 0.07;
-      case 'planet': return s * 0.045;
-      case 'station': return s * 0.036;
-      case 'nebula': return s * 0.055;
-      case 'gas_cloud': return s * 0.05;
-      case 'ice_field': return s * 0.045;
-      default: return s * 0.036;
+      case 'sun': return s * 0.22;
+      case 'planet': return s * 0.11;
+      case 'station': return s * 0.08;
+      case 'nebula': return s * 0.13;
+      case 'gas_cloud': return s * 0.11;
+      case 'ice_field': return s * 0.10;
+      default: return s * 0.07;
     }
   }
 
@@ -301,11 +301,19 @@
     e.preventDefault();
   }
 
+  // SVG uses preserveAspectRatio="xMidYMid meet" – uniform scale based on the tighter axis.
+  // Compute the actual pixel-to-SVG-unit ratio so drag is consistent in both directions.
+  function svgScale(): number {
+    if (!containerEl) return 1;
+    const rect = containerEl.getBoundingClientRect();
+    return Math.min(rect.width / viewW, rect.height / viewH);
+  }
+
   function onMouseMove(e: MouseEvent) {
     if (!dragging || !containerEl) return;
-    const rect = containerEl.getBoundingClientRect();
-    const dx = (e.clientX - _dragStartX) / rect.width * viewW;
-    const dy = (e.clientY - _dragStartY) / rect.height * viewH;
+    const s = svgScale();
+    const dx = (e.clientX - _dragStartX) / s;
+    const dy = (e.clientY - _dragStartY) / s;
     _pendingCamX = _dragCamStartX - dx;
     _pendingCamY = _dragCamStartY - dy;
     if (!_rafId) {
@@ -331,13 +339,14 @@
     if (!containerEl) return;
 
     const rect = containerEl.getBoundingClientRect();
-    const mx = camX + (e.clientX - rect.left - rect.width / 2) / rect.width * viewW;
-    const my = camY + (e.clientY - rect.top - rect.height / 2) / rect.height * viewH;
+    const s = svgScale();
+    const mx = camX + (e.clientX - rect.left - rect.width / 2) / s;
+    const my = camY + (e.clientY - rect.top - rect.height / 2) / s;
 
     const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
     // Extended zoom range: min 50, max 80000
-    const newW = Math.max(50, Math.min(80000, viewW * factor));
-    const newH = Math.max(50, Math.min(80000, viewH * factor));
+    const newW = Math.max(5, Math.min(80000, viewW * factor));
+    const newH = Math.max(5, Math.min(80000, viewH * factor));
 
     const scale = newW / viewW;
     camX = mx + (camX - mx) * scale;
@@ -372,9 +381,9 @@
 
   function onTouchMove(e: TouchEvent) {
     if (e.touches.length === 1 && dragging && containerEl) {
-      const rect = containerEl.getBoundingClientRect();
-      const dx = (e.touches[0].clientX - _dragStartX) / rect.width * viewW;
-      const dy = (e.touches[0].clientY - _dragStartY) / rect.height * viewH;
+      const s = svgScale();
+      const dx = (e.touches[0].clientX - _dragStartX) / s;
+      const dy = (e.touches[0].clientY - _dragStartY) / s;
       _pendingCamX = _dragCamStartX - dx;
       _pendingCamY = _dragCamStartY - dy;
       if (!_rafId) {
@@ -385,8 +394,8 @@
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scale = touchStartDist / dist;
-      viewW = Math.max(50, Math.min(80000, touchStartViewW * scale));
-      viewH = Math.max(50, Math.min(80000, touchStartViewH * scale));
+      viewW = Math.max(5, Math.min(80000, touchStartViewW * scale));
+      viewH = Math.max(5, Math.min(80000, touchStartViewH * scale));
     }
     e.preventDefault();
   }
@@ -566,11 +575,12 @@
           {@const dr = dotRadius(poi.type, sc)}
 
           {#if poi.type === 'sun'}
-            <circle cx={pos.x} cy={pos.y} r={dr * 1.4} fill="#ffd740" opacity="0.15" filter="url(#ex-sun-glow)" />
-            <circle cx={pos.x} cy={pos.y} r={dr} fill="#ffd740" opacity="0.9" filter="url(#ex-sun-glow)">
-              <animate attributeName="opacity" values="0.9;0.7;0.9" dur="4s" repeatCount="indefinite" />
+            <circle cx={pos.x} cy={pos.y} r={dr * 1.8} fill="#ffeb3b" opacity="0.12" filter="url(#ex-sun-glow)" />
+            <circle cx={pos.x} cy={pos.y} r={dr * 1.3} fill="#ffe082" opacity="0.25" filter="url(#ex-sun-glow)" />
+            <circle cx={pos.x} cy={pos.y} r={dr} fill="#ffeb3b" opacity="0.95" filter="url(#ex-sun-glow)">
+              <animate attributeName="opacity" values="0.95;0.8;0.95" dur="4s" repeatCount="indefinite" />
             </circle>
-            <circle cx={pos.x} cy={pos.y} r={dr * 0.55} fill="#fff8e1" opacity="0.7" />
+            <circle cx={pos.x} cy={pos.y} r={dr * 0.55} fill="#fffde7" opacity="0.85" />
 
           {:else if poi.type === 'station'}
             <polygon
@@ -635,8 +645,8 @@
               stroke="rgba(255,255,255,0.15)" stroke-width={sw * 0.3} />
           {/if}
 
-          <!-- POI label: only when very zoomed in (viewW < 1500), larger font -->
-          {#if viewW < 1500}
+          <!-- POI label: only when very zoomed in (viewW < 500) -->
+          {#if viewW < 500}
             <text
               x={pos.x}
               y={pos.y + dotRadius(poi.type, sc) + sc * 0.8}
