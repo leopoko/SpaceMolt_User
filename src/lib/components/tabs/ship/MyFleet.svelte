@@ -37,6 +37,9 @@
             <div class="fleet-info">
               <span class="fleet-name">{ship.name}</span>
               <span class="fleet-type mono">{ship.type}</span>
+              {#if ship.location}
+                <span class="fleet-location">{ship.location}</span>
+              {/if}
               <div class="fleet-bars">
                 <LinearProgress progress={ship.hull / ship.max_hull} class="progress-hull" style="height:4px" />
               </div>
@@ -109,6 +112,7 @@
   .fleet-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
   .fleet-name { font-size: 0.8rem; color: #b0bec5; }
   .fleet-type { font-size: 0.65rem; color: #546e7a; }
+  .fleet-location { font-size: 0.6rem; color: #4a6070; }
   .fleet-bars { width: 100%; margin-top: 4px; }
   .fleet-btns { display: flex; gap: 4px; margin-left: 8px; }
 
