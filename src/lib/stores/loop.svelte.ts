@@ -372,6 +372,13 @@ class LoopStore {
           opts,
         };
 
+      case 'survey_system':
+        return {
+          label: step.label,
+          execute: () => ws.surveySystem(),
+          opts,
+        };
+
       default:
         // Unknown command — log warning and no-op
         return {

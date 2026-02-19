@@ -6,13 +6,77 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
+  import { eventsStore } from '$lib/stores/events.svelte';
   import SystemMap from '$lib/components/SystemMap.svelte';
   import { chatStore } from '$lib/stores/chat.svelte';
 
   let nearbyOpen = $state(false);
+  let memoViewOpen = $state(false);
 
-  // Walk the action queue (including currently executing action) to compute
-  // effective dock state and effective POI.
+  // ---- Recording mode: virtual system tracking ----
+  // Walk the queue to find the last Jump action → that's the virtual system during recording
+  let recordingVirtualSystemId = $derived.by(() => {
+    if (!actionQueueStore.recordingMode) return null;
+    let virtualId: string | null = null;
+    const cur = actionQueueStore.currentAction;
+    if (cur) {
+      const jumpMatch = cur.match(/^Jump → (.+)$/);
+      if (jumpMatch) {
+        // Find systemId from connections or memo
+        for (const conn of systemStore.connections) {
+          if (conn.system_name === jumpMatch[1]) {
+            virtualId = conn.system_id;
+            break;
+          }
+        }
+      }
+    }
+    for (const item of actionQueueStore.items) {
+      // Look up the command for this item to get the systemId
+      const cmd = actionQueueStore.getCommand(item.id);
+      if (cmd?.type === 'jump' && cmd.params?.systemId) {
+        virtualId = cmd.params.systemId as string;
+      }
+    }
+    return virtualId;
+  });
+
+  // The memo for the virtual system (if any)
+  let virtualMemo = $derived(
+    recordingVirtualSystemId ? systemMemoStore.getMemo(recordingVirtualSystemId) : null
+  );
+
+  // Whether we are showing a virtual (memo-based) system during recording
+  let isVirtualSystem = $derived(
+    actionQueueStore.recordingMode && recordingVirtualSystemId != null && virtualMemo != null
+  );
+
+  // Display data: use memo when in virtual system, otherwise live data
+  let displaySystemName = $derived(
+    isVirtualSystem ? (virtualMemo?.systemName ?? 'Unknown') : systemStore.name
+  );
+  let displaySecurityLevel = $derived(
+    isVirtualSystem ? (virtualMemo?.securityLevel ?? 'null') : systemStore.securityLevel
+  );
+  let displayDescription = $derived(
+    isVirtualSystem ? (virtualMemo?.description ?? '') : (systemStore.data?.description ?? '')
+  );
+  let displayPois = $derived(
+    isVirtualSystem
+      ? (virtualMemo?.pois ?? []).map(p => ({ ...p, player_count: 0, base: null }))
+      : systemStore.pois
+  );
+  let displayConnections = $derived(
+    isVirtualSystem
+      ? (virtualMemo?.connections ?? [])
+      : systemStore.connections
+  );
+  let hasSystemData = $derived(
+    isVirtualSystem ? virtualMemo != null : systemStore.data != null
+  );
+
+  // Walk the action queue to compute effective dock state and effective POI.
   let effectivelyDocked = $derived.by(() => {
     let docked = playerStore.isDocked;
     const cur = actionQueueStore.currentAction;
@@ -30,7 +94,7 @@
     let poiId = playerStore.poi_id;
     const cur = actionQueueStore.currentAction;
     if (cur) {
-      for (const poi of systemStore.pois) {
+      for (const poi of displayPois) {
         if (cur === `Travel → ${poi.name}`) {
           poiId = poi.id;
           break;
@@ -38,7 +102,7 @@
       }
     }
     for (const item of actionQueueStore.items) {
-      for (const poi of systemStore.pois) {
+      for (const poi of displayPois) {
         if (item.label === `Travel → ${poi.name}`) {
           poiId = poi.id;
           break;
@@ -52,7 +116,6 @@
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
   };
 
-  // Human-readable label for each security level (fixes "NULL" display)
   const secLabel: Record<string, string> = {
     high: 'HIGH', medium: 'MEDIUM', low: 'LOW', null: 'UNREGULATED'
   };
@@ -95,6 +158,22 @@
     });
   }
 
+  function doSurvey() {
+    actionQueueStore.enqueue('Survey System', () => ws.surveySystem(), {
+      command: { type: 'survey_system' }
+    });
+  }
+
+  function saveMemo() {
+    systemMemoStore.save(systemStore.data);
+    eventsStore.add({ type: 'info', message: `[Memo] System memo saved: ${systemStore.name}` });
+  }
+
+  // Current system memo (for showing "memo saved" indicator)
+  let currentMemo = $derived(
+    systemStore.data?.id ? systemMemoStore.getMemo(systemStore.data.id) : null
+  );
+
   function openPM(username: string) {
     chatStore.privateTarget = username;
     chatStore.setFilter('private');
@@ -104,7 +183,6 @@
     ws.getSystem();
   }
 
-  // Fetch system info when NavigationTab mounts
   onMount(() => {
     ws.getSystem();
   });
@@ -112,31 +190,58 @@
 
 <div class="nav-outer">
   <div class="nav-grid">
-    <!-- Current System Info + Points of Interest (no Nearby Players) -->
+    <!-- Current System Info + Points of Interest -->
     <Card class="space-card">
       <Content>
         <div class="section-head">
-          <span class="tab-section-title">Current System</span>
-          <button class="icon-btn" onclick={refresh} title="Refresh">↻</button>
+          <span class="tab-section-title">
+            {isVirtualSystem ? 'Virtual System (Memo)' : 'Current System'}
+          </span>
+          <div class="head-buttons">
+            {#if !isVirtualSystem}
+              <button class="svc-btn survey-btn" onclick={doSurvey} title="Survey system for hidden POIs">
+                <span class="material-icons" style="font-size:14px">radar</span> Survey
+              </button>
+              <button class="svc-btn memo-save-btn" onclick={saveMemo} title="Save system memo">
+                <span class="material-icons" style="font-size:14px">bookmark</span> Memo
+              </button>
+              {#if currentMemo}
+                <span class="memo-saved-hint">
+                  Saved {new Date(currentMemo.savedAt).toLocaleTimeString()}
+                </span>
+              {/if}
+              <button class="icon-btn" onclick={() => memoViewOpen = !memoViewOpen} title="View saved memos">
+                <span class="material-icons" style="font-size:16px">folder_open</span>
+              </button>
+            {/if}
+            <button class="icon-btn" onclick={refresh} title="Refresh">↻</button>
+          </div>
         </div>
 
-        {#if systemStore.data}
-          <h2 class="system-name">{systemStore.name}</h2>
-          {@const sys = secDisplay(systemStore.securityLevel)}
-          <div class="sec-badge" style="color:{sys.color}">
-            Security: {systemStore.securityStatus ?? sys.label}
+        {#if isVirtualSystem}
+          <div class="virtual-banner">
+            <span class="material-icons" style="font-size:14px">memory</span>
+            メモデータで表示中 — 録画モード
           </div>
-          {#if systemStore.data.description}
-            <p class="sys-desc">{systemStore.data.description}</p>
+        {/if}
+
+        {#if hasSystemData}
+          <h2 class="system-name">{displaySystemName}</h2>
+          {@const sys = secDisplay(displaySecurityLevel)}
+          <div class="sec-badge" style="color:{sys.color}">
+            Security: {sys.label}
+          </div>
+          {#if displayDescription}
+            <p class="sys-desc">{displayDescription}</p>
           {/if}
 
-          <!-- Points of Interest with Travel / Dock / Undock actions -->
+          <!-- Points of Interest -->
           <p class="tab-section-title" style="margin-top:12px">Points of Interest</p>
-          {#if systemStore.pois.length > 0}
+          {#if displayPois.length > 0}
             <div class="poi-list">
-              {#each systemStore.pois as poi}
-                {@const isHere = playerStore.poi_id === poi.id}
-                {@const isTravDest = systemStore.travel.in_progress && systemStore.travel.destination_id === poi.id}
+              {#each displayPois as poi}
+                {@const isHere = !isVirtualSystem && playerStore.poi_id === poi.id}
+                {@const isTravDest = !isVirtualSystem && systemStore.travel.in_progress && systemStore.travel.destination_id === poi.id}
                 <div class="poi-item" class:poi-current={isHere} class:poi-traveling={isTravDest}>
                   <div class="poi-left">
                     <span class="material-icons poi-icon">{poiIcons[poi.type] ?? 'place'}</span>
@@ -148,7 +253,7 @@
                         {/if}
                         {#if isTravDest}<span class="dest-chip">▶</span>{/if}
                       </span>
-                      <span class="poi-sub">{poi.type} · {poi.player_count ?? poi.online ?? 0} online</span>
+                      <span class="poi-sub">{poi.type}{#if !isVirtualSystem} · {poi.player_count ?? 0} online{/if}</span>
                     </div>
                   </div>
                   <div class="poi-btns">
@@ -160,7 +265,7 @@
                       <Button
                         variant="outlined"
                         dense
-                        disabled={effectivelyDocked}
+                        disabled={!isVirtualSystem && effectivelyDocked}
                         onclick={() => doTravel(poi.id, poi.name)}
                       >
                         <Label>Travel</Label>
@@ -169,7 +274,7 @@
                         <Button
                           variant="outlined"
                           dense
-                          disabled={effectivelyDocked || effectivePoiId !== poi.id}
+                          disabled={!isVirtualSystem && (effectivelyDocked || effectivePoiId !== poi.id)}
                           onclick={() => doDock(poi.id, poi.name)}
                         >
                           <Label>Dock</Label>
@@ -189,18 +294,24 @@
       </Content>
     </Card>
 
-    <!-- Right column: Jump Destinations + System Map -->
+    <!-- Right column: Jump Destinations + System Map / Memo View -->
     <div class="right-col">
       <Card class="space-card">
         <Content>
           <p class="tab-section-title">Jump Destinations</p>
-          {#if systemStore.connections.length > 0}
+          {#if displayConnections.length > 0}
             <div class="connection-list">
-              {#each systemStore.connections as conn}
+              {#each displayConnections as conn}
                 {@const csec = secDisplay(conn.security_level)}
+                {@const hasMemo = systemMemoStore.hasMemo(conn.system_id)}
                 <div class="conn-item">
                   <div class="conn-info">
-                    <span class="conn-name">{conn.system_name ?? '—'}</span>
+                    <span class="conn-name">
+                      {conn.system_name ?? '—'}
+                      {#if hasMemo}
+                        <span class="memo-chip" title="Memo available">M</span>
+                      {/if}
+                    </span>
                     {#if conn.security_level != null}
                       <span class="conn-sec" style="color:{csec.color}">{csec.label}</span>
                     {/if}
@@ -214,10 +325,19 @@
                   <Button
                     variant="outlined"
                     dense
-                    disabled={effectivelyDocked}
+                    disabled={
+                      (!isVirtualSystem && effectivelyDocked) ||
+                      (actionQueueStore.recordingMode && !hasMemo)
+                    }
                     onclick={() => doJump(conn.system_id, conn.system_name)}
                   >
-                    <Label>Jump</Label>
+                    <Label>
+                      {#if actionQueueStore.recordingMode && !hasMemo}
+                        No Memo
+                      {:else}
+                        Jump
+                      {/if}
+                    </Label>
                   </Button>
                 </div>
               {/each}
@@ -226,7 +346,7 @@
             <p class="empty-hint">No connections available</p>
           {/if}
 
-          {#if systemStore.travel.in_progress}
+          {#if !isVirtualSystem && systemStore.travel.in_progress}
             <div class="traveling-notice">
               ► {systemStore.travel.type === 'jump' ? 'Jumping to' : 'Traveling to'} {systemStore.travel.destination_name ?? '...'}
               {#if systemStore.travel.arrival_tick !== null}
@@ -237,8 +357,51 @@
         </Content>
       </Card>
 
-      <!-- System Map: plain flex div so it fills remaining right-col height -->
-      {#if systemStore.data && systemStore.pois.length > 0}
+      <!-- Memo Viewer -->
+      {#if memoViewOpen}
+        <Card class="space-card">
+          <Content>
+            <div class="section-head">
+              <span class="tab-section-title">Saved System Memos</span>
+              <button class="icon-btn" onclick={() => memoViewOpen = false}>✕</button>
+            </div>
+            {#if systemMemoStore.allMemos.length > 0}
+              <div class="memo-list">
+                {#each systemMemoStore.allMemos as memo}
+                  {@const msec = secDisplay(memo.securityLevel)}
+                  <div class="memo-item">
+                    <div class="memo-item-head">
+                      <span class="memo-item-name">{memo.systemName}</span>
+                      <span class="conn-sec" style="color:{msec.color};font-size:0.6rem">{msec.label}</span>
+                    </div>
+                    <div class="memo-item-detail">
+                      <span class="mono">{memo.pois.length} POIs</span>
+                      <span class="mono">{memo.connections.length} connections</span>
+                      <span class="memo-time">{new Date(memo.savedAt).toLocaleDateString()}</span>
+                    </div>
+                    {#if Object.keys(memo.miningStats).length > 0}
+                      <div class="memo-mining-summary">
+                        {#each Object.entries(memo.miningStats) as [poiId, stats]}
+                          {@const poiName = memo.pois.find(p => p.id === poiId)?.name ?? poiId}
+                          <span class="mining-summary-chip" title="{poiName}: {stats.totalMined} mined">
+                            ⛏ {poiName}: {stats.totalMined}
+                          </span>
+                        {/each}
+                      </div>
+                    {/if}
+                    <button class="memo-delete-btn" onclick={() => systemMemoStore.removeMemo(memo.systemId)} title="Delete memo">
+                      <span class="material-icons" style="font-size:13px">delete</span>
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p class="empty-hint">No system memos saved yet</p>
+            {/if}
+          </Content>
+        </Card>
+      {:else if !isVirtualSystem && systemStore.data && systemStore.pois.length > 0}
+        <!-- System Map -->
         <div class="map-section">
           <p class="tab-section-title" style="margin:0">System Map</p>
           <div class="map-wrap">
@@ -250,7 +413,7 @@
   </div>
 
   <!-- Nearby Players: full-width row below the grid -->
-  {#if systemStore.nearbyPlayers.length > 0}
+  {#if !isVirtualSystem && systemStore.nearbyPlayers.length > 0}
     <div class="nearby-section">
       <button class="nearby-toggle" onclick={() => nearbyOpen = !nearbyOpen}>
         <span class="material-icons nearby-arrow" class:nearby-arrow-open={nearbyOpen}>expand_more</span>
@@ -296,7 +459,6 @@
     height: 100%;
   }
 
-  /* Map section: plain div styled like space-card, fills remaining right-col height */
   .map-section {
     flex: 1;
     min-height: 0;
@@ -314,7 +476,6 @@
     min-height: 0;
   }
 
-  /* Nearby Players: full-width card below grid */
   .nearby-section {
     background: var(--space-surface, #0d1525);
     border: 1px solid rgba(79,195,247,0.18);
@@ -333,6 +494,14 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+    gap: 6px;
+  }
+
+  .head-buttons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
   .icon-btn {
@@ -345,6 +514,54 @@
   }
 
   .icon-btn:hover { color: #90caf9; }
+
+  /* ---- Service buttons ---- */
+
+  .svc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 8px;
+    font-size: 0.65rem;
+    font-family: inherit;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid;
+    background: none;
+  }
+
+  .survey-btn {
+    color: #ce93d8;
+    border-color: rgba(206,147,216,0.3);
+  }
+  .survey-btn:hover { background: rgba(206,147,216,0.1); }
+
+  .memo-save-btn {
+    color: #ffd700;
+    border-color: rgba(255,215,0,0.3);
+  }
+  .memo-save-btn:hover { background: rgba(255,215,0,0.1); }
+
+  .memo-saved-hint {
+    font-size: 0.58rem;
+    color: #546e7a;
+  }
+
+  /* ---- Virtual system banner ---- */
+
+  .virtual-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    margin-bottom: 8px;
+    background: rgba(244,67,54,0.08);
+    border: 1px solid rgba(244,67,54,0.25);
+    border-radius: 4px;
+    font-size: 0.68rem;
+    color: #ef5350;
+  }
 
   .system-name {
     font-size: 1.2rem;
@@ -392,13 +609,11 @@
     gap: 8px;
   }
 
-  /* Green highlight when docked here */
   .poi-item.poi-current {
     background: rgba(76, 175, 80, 0.08);
     border-color: rgba(76, 175, 80, 0.35);
   }
 
-  /* Amber highlight when this is the travel destination */
   .poi-item.poi-traveling {
     background: rgba(255, 183, 77, 0.06);
     border-color: rgba(255, 183, 77, 0.25);
@@ -444,7 +659,6 @@
     color: #546e7a;
   }
 
-  /* Badge shown next to the POI name */
   .here-chip {
     font-size: 0.58rem;
     font-family: 'Roboto Mono', monospace;
@@ -457,14 +671,12 @@
     letter-spacing: 0.05em;
   }
 
-  /* "HERE" badge (at POI but not docked) – cyan to distinguish from green DOCKED */
   .here-chip-active {
     color: #4fc3f7;
     background: rgba(79, 195, 247, 0.15);
     border-color: rgba(79, 195, 247, 0.4);
   }
 
-  /* Arrow shown when this POI is the active travel destination */
   .dest-chip {
     font-size: 0.7rem;
     color: #ffb74d;
@@ -577,6 +789,9 @@
   .conn-name {
     font-size: 0.82rem;
     color: #b0bec5;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .conn-sec { font-size: 0.68rem; }
@@ -584,6 +799,17 @@
   .conn-cost {
     font-size: 0.68rem;
     color: #ff9800;
+  }
+
+  .memo-chip {
+    font-size: 0.55rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 700;
+    color: #ffd700;
+    background: rgba(255,215,0,0.15);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 3px;
+    padding: 0 3px;
   }
 
   .mono { font-family: 'Roboto Mono', monospace; }
@@ -598,6 +824,75 @@
     font-size: 0.75rem;
     animation: pulse 1.5s infinite;
   }
+
+  /* ---- Memo Viewer ---- */
+
+  .memo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .memo-item {
+    position: relative;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 4px;
+  }
+
+  .memo-item-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .memo-item-name {
+    font-size: 0.8rem;
+    color: #90caf9;
+  }
+
+  .memo-item-detail {
+    display: flex;
+    gap: 8px;
+    font-size: 0.62rem;
+    color: #546e7a;
+    margin-top: 2px;
+  }
+
+  .memo-time {
+    color: #37474f;
+  }
+
+  .memo-mining-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 4px;
+  }
+
+  .mining-summary-chip {
+    font-size: 0.58rem;
+    padding: 1px 5px;
+    background: rgba(255,152,0,0.08);
+    border: 1px solid rgba(255,152,0,0.2);
+    border-radius: 3px;
+    color: #ff9800;
+  }
+
+  .memo-delete-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: none;
+    border: none;
+    color: #546e7a;
+    cursor: pointer;
+    padding: 2px;
+  }
+  .memo-delete-btn:hover { color: #f44336; }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; }

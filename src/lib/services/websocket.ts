@@ -23,6 +23,7 @@ import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
 import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
+import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -331,6 +332,11 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
           this.viewStorage();
+        } else if (cmd === 'survey_system') {
+          const message = (result?.message as string) ?? 'Survey complete';
+          eventsStore.add({ type: 'nav', message });
+          // Survey may reveal new POIs; refresh system data
+          this.getSystem();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -438,6 +444,12 @@ class WebSocketService {
         const pl = p<{ item?: string; quantity?: number; ship?: never }>(msg);
         eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${pl.item ?? 'ore'}` });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
+        // Track mining yield in system memo
+        const yieldSystemId = playerStore.system_id;
+        const yieldPoiId = playerStore.poi_id;
+        if (yieldSystemId && yieldPoiId && pl.item && (pl.quantity ?? 0) > 0) {
+          systemMemoStore.addMiningYield(yieldSystemId, yieldPoiId, pl.item, pl.quantity!);
+        }
         break;
       }
 
@@ -858,6 +870,9 @@ class WebSocketService {
             connections,
           } as never);
 
+          // Auto-save system memo whenever we get system data
+          systemMemoStore.save(systemStore.data);
+
           // Also update currentPoi if provided
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
@@ -1006,6 +1021,8 @@ class WebSocketService {
   // ---- Ship Services ----
 
   repair() { this.send({ type: 'repair' }); }
+
+  surveySystem() { this.send({ type: 'survey_system' }); }
 
   refuel(quantity?: number, itemId?: string) {
     const payload: Record<string, unknown> = {};

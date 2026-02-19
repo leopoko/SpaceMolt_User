@@ -4,8 +4,10 @@
   import LinearProgress from '@smui/linear-progress';
   import { systemStore } from '$lib/stores/system.svelte';
   import { shipStore } from '$lib/stores/ship.svelte';
+  import { playerStore } from '$lib/stores/player.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
+  import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
   import { ws } from '$lib/services/websocket';
 
@@ -67,8 +69,36 @@
     if (item.name) return item.name;
     const memo = marketMemoStore.getItemPrice(item.item_id);
     if (memo) return memo.item_name;
-    // Fallback: humanize item_id (e.g. "ore_iron" → "Ore Iron")
     return item.item_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // ---- Mining Statistics from System Memo ----
+  let currentSystemId = $derived(playerStore.system_id);
+  let systemMiningStats = $derived(
+    currentSystemId ? systemMemoStore.getSystemMiningStats(currentSystemId) : {}
+  );
+
+  // Flatten stats: sorted list of { poiId, poiName, items: { name, count, pct }[], total }
+  let miningStatsDisplay = $derived.by(() => {
+    const entries = Object.entries(systemMiningStats);
+    if (entries.length === 0) return [];
+    return entries.map(([poiId, stats]) => {
+      const poiName = systemStore.pois.find(p => p.id === poiId)?.name ?? poiId;
+      const items = Object.entries(stats.items)
+        .map(([name, count]) => ({
+          name,
+          count,
+          pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
+        }))
+        .sort((a, b) => b.count - a.count);
+      return { poiId, poiName, items, total: stats.totalMined };
+    }).sort((a, b) => b.total - a.total);
+  });
+
+  function clearMiningStats(poiId?: string) {
+    if (currentSystemId) {
+      systemMemoStore.clearMiningStats(currentSystemId, poiId);
+    }
   }
 </script>
 
@@ -123,6 +153,38 @@
           <Label>⛏ Mine → Full</Label>
         </Button>
       </div>
+
+      <!-- Mining Statistics from Memo -->
+      {#if miningStatsDisplay.length > 0}
+        <div class="mining-stats-section">
+          <div class="stats-head">
+            <p class="tab-section-title" style="margin:0">Mining Statistics</p>
+            <button class="stats-clear-btn" onclick={() => clearMiningStats()} title="Clear all stats for this system">
+              <span class="material-icons" style="font-size:12px">delete</span> Clear
+            </button>
+          </div>
+          {#each miningStatsDisplay as poi}
+            <div class="stats-poi">
+              <div class="stats-poi-head">
+                <span class="stats-poi-name">{poi.poiName}</span>
+                <span class="stats-poi-total mono">{poi.total} total</span>
+              </div>
+              <div class="stats-items">
+                {#each poi.items as item}
+                  <div class="stats-item-row">
+                    <div class="stats-item-bar-bg">
+                      <div class="stats-item-bar" style="width:{item.pct}%"></div>
+                    </div>
+                    <span class="stats-item-name">{item.name}</span>
+                    <span class="stats-item-count mono">{item.count}</span>
+                    <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </Content>
   </Card>
 
@@ -338,4 +400,113 @@
   .credits { color: #ffd700; }
   .buy-price { color: #66bb6a; }
   .sell-price { color: #ff9800; }
+
+  /* ---- Mining Statistics ---- */
+
+  .mining-stats-section {
+    margin-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 12px;
+  }
+
+  .stats-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .stats-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: 1px solid rgba(244,67,54,0.2);
+    color: #ef5350;
+    font-size: 0.6rem;
+    font-family: inherit;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .stats-clear-btn:hover { background: rgba(244,67,54,0.1); }
+
+  .stats-poi {
+    margin-bottom: 10px;
+  }
+
+  .stats-poi-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .stats-poi-name {
+    font-size: 0.75rem;
+    color: #90caf9;
+  }
+
+  .stats-poi-total {
+    font-size: 0.65rem;
+    color: #546e7a;
+  }
+
+  .stats-items {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .stats-item-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+
+  .stats-item-bar-bg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    background: rgba(255,255,255,0.02);
+    border-radius: 2px;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .stats-item-bar {
+    height: 100%;
+    background: rgba(255,152,0,0.12);
+    border-radius: 2px;
+    min-width: 0;
+  }
+
+  .stats-item-name {
+    font-size: 0.7rem;
+    color: #b0bec5;
+    padding: 2px 4px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .stats-item-count {
+    font-size: 0.65rem;
+    color: #ff9800;
+    position: relative;
+    z-index: 1;
+  }
+
+  .stats-item-pct {
+    font-size: 0.62rem;
+    color: #546e7a;
+    width: 42px;
+    text-align: right;
+    position: relative;
+    z-index: 1;
+  }
 </style>
