@@ -441,18 +441,18 @@ class WebSocketService {
       }
 
       case 'mining_yield': {
-        const pl = p<{ item?: string; quantity?: number; ship?: never }>(msg);
-        eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${pl.item ?? 'ore'}` });
+        const pl = p<{ resource_id?: string; resource_name?: string; item?: string; quantity?: number; ship?: never }>(msg);
+        const resourceName = pl.resource_name ?? pl.item ?? 'ore';
+        eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${resourceName}` });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
         // Track mining yield in system memo and auto-save system data
         const yieldSystemId = playerStore.system_id;
         const yieldPoiId = playerStore.poi_id;
-        if (yieldSystemId && yieldPoiId && pl.item && (pl.quantity ?? 0) > 0) {
-          // Ensure system memo exists, then add yield
+        if (yieldSystemId && yieldPoiId && (pl.quantity ?? 0) > 0) {
           if (!systemMemoStore.hasMemo(yieldSystemId)) {
             systemMemoStore.save(systemStore.data);
           }
-          systemMemoStore.addMiningYield(yieldSystemId, yieldPoiId, pl.item, pl.quantity!);
+          systemMemoStore.addMiningYield(yieldSystemId, yieldPoiId, resourceName, pl.quantity!);
         }
         break;
       }
