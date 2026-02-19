@@ -6,6 +6,7 @@ class ConnectionStore {
   reconnectAttempts = $state(0);
   tick = $state(0);
   tickRate = $state(10); // seconds per tick
+  lastTickTime = $state<number>(Date.now()); // wall-clock time of last tick
   lastError = $state<string | null>(null);
 }
 

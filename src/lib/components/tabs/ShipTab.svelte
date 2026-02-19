@@ -52,23 +52,23 @@
         <div class="stat-row">
           <span class="stat-name">Cargo</span>
           <LinearProgress progress={shipStore.cargoPercent / 100} style="--mdc-theme-primary:#ff9800" />
-          <span class="mono stat-val">{shipStore.cargoUsed.toFixed(0)}/{shipStore.current.max_cargo}</span>
+          <span class="mono stat-val">{shipStore.cargoUsed.toFixed(0)}/{shipStore.cargoCapacity}</span>
         </div>
 
         <div class="cpu-power">
-          <span class="mono dim">CPU: {shipStore.current.cpu_used}/{shipStore.current.cpu_max}</span>
-          <span class="mono dim">PWR: {shipStore.current.power_used}/{shipStore.current.power_max}</span>
+          <span class="mono dim">CPU: {shipStore.cpuUsed}/{shipStore.cpuCapacity}</span>
+          <span class="mono dim">PWR: {shipStore.powerUsed}/{shipStore.powerCapacity}</span>
         </div>
 
-        {#if shipStore.current.modules.length > 0}
+        {#if shipStore.moduleData.length > 0}
           <p class="tab-section-title" style="margin-top:14px">Modules</p>
           <div class="module-list">
-            {#each shipStore.current.modules as mod}
-              <div class="module-item" class:active={mod.active}>
+            {#each shipStore.moduleData as mod}
+              <div class="module-item" class:active={mod.active ?? true}>
                 <span class="mod-name">{mod.name}</span>
-                <span class="mod-type mono">{mod.type}</span>
-                <span class="mod-wear mono" class:warn={mod.wear > 70}>
-                  {mod.wear}% wear
+                <span class="mod-type mono">{mod.type_id ?? mod.type}</span>
+                <span class="mod-wear mono" class:warn={(mod.wear ?? 0) > 70}>
+                  {mod.wear_status ?? `${mod.wear ?? 0}% wear`}
                 </span>
               </div>
             {/each}

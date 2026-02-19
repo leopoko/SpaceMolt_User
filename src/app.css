@@ -94,10 +94,10 @@ body {
   overflow-y: auto;
 }
 
-/* ---- Bottom panel (event log + chat) ---- */
+/* ---- Bottom panel (event log + chat + action queue) ---- */
 .bottom-panel {
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 1fr 320px 220px;
   gap: 8px;
   padding: 8px 16px;
   height: 200px;
@@ -105,10 +105,20 @@ body {
   border-top: 1px solid var(--space-border);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .bottom-panel {
+    grid-template-columns: 1fr 220px;
+    height: 230px;
+  }
+  .bottom-panel > :last-child {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
   .bottom-panel {
     grid-template-columns: 1fr;
-    height: 280px;
+    height: 300px;
   }
 }
 

@@ -1,5 +1,5 @@
 import type {
-  WsMessage, StateUpdate, WelcomePayload,
+  WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, MarketData, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry
 } from '$lib/types/game';
@@ -15,6 +15,7 @@ import { factionStore } from '$lib/stores/faction.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
 import { chatStore } from '$lib/stores/chat.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
+import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -185,20 +186,36 @@ class WebSocketService {
       }
 
       case 'state_update': {
-        const pl = p<StateUpdate>(msg);
+        const pl = p<StateUpdatePayload>(msg);
         if (pl.player) playerStore.update(pl.player);
         if (pl.ship) shipStore.updateCurrent(pl.ship);
-        if (pl.system) systemStore.update(pl.system);
-        if (pl.events) pl.events.forEach(e => eventsStore.add(e));
-        if (pl.chat) pl.chat.forEach(c => chatStore.addMessage(c));
-        if (pl.tick !== undefined) connectionStore.tick = pl.tick;
+        if (pl.modules) shipStore.updateModules(pl.modules);
+        if (pl.nearby) systemStore.setNearby(pl.nearby);
+        if (pl.in_combat !== undefined) combatStore.setInCombat(pl.in_combat);
+        // Also handle legacy fields (events, chat, system) for forward-compatibility
+        const legacy = pl as unknown as StateUpdate;
+        if (legacy.system) systemStore.update(legacy.system);
+        if (legacy.events) legacy.events.forEach(e => eventsStore.add(e));
+        if (legacy.chat) legacy.chat.forEach(c => chatStore.addMessage(c));
+        if (pl.tick !== undefined) {
+          const prevTick = connectionStore.tick;
+          connectionStore.tick = pl.tick;
+          connectionStore.lastTickTime = Date.now();
+          // Execute next queued action only when tick number advances
+          // (dedup via tick number in case both tick + state_update fire)
+          if (pl.tick > prevTick) {
+            actionQueueStore.executeNext(pl.tick);
+          }
+        }
         break;
       }
 
       case 'tick': {
         const pl = p<{ tick?: number }>(msg);
         connectionStore.tick = pl.tick ?? connectionStore.tick + 1;
+        connectionStore.lastTickTime = Date.now();
         systemStore.setTravel({ current_tick: connectionStore.tick });
+        actionQueueStore.executeNext(connectionStore.tick);
         break;
       }
 
@@ -234,13 +251,17 @@ class WebSocketService {
       case 'docked': {
         const pl = p<{ station_name?: string; station_id?: string }>(msg);
         eventsStore.add({ type: 'nav', message: `Docked at ${pl.station_name ?? ''}` });
-        playerStore.update({ status: 'docked', poi_id: pl.station_id ?? null });
+        playerStore.update({
+          status: 'docked',
+          poi_id: pl.station_id ?? null,
+          docked_at_base: pl.station_id ?? null
+        });
         break;
       }
 
       case 'undocked': {
         eventsStore.add({ type: 'nav', message: 'Undocked' });
-        playerStore.update({ status: 'active', poi_id: null });
+        playerStore.update({ status: 'active', poi_id: null, docked_at_base: null });
         break;
       }
 

@@ -112,7 +112,7 @@
                 <tr>
                   <td>{item.name}</td>
                   <td class="num mono">{item.quantity}</td>
-                  <td class="num mono">{(item.quantity * item.volume).toFixed(1)}</td>
+                  <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
                 </tr>
               {/each}
             </tbody>

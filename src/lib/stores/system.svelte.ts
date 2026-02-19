@@ -1,8 +1,10 @@
-import type { SystemInfo, POI, TravelState } from '$lib/types/game';
+import type { SystemInfo, POI, TravelState, NearbyPlayer } from '$lib/types/game';
 
 class SystemStore {
   data = $state<SystemInfo | null>(null);
   currentPoi = $state<POI | null>(null);
+  // Nearby players from frequent state_update (overrides system_info.nearby_players)
+  nearbyFromUpdate = $state<NearbyPlayer[]>([]);
   travel = $state<TravelState>({
     in_progress: false,
     destination_id: null,
@@ -16,13 +18,22 @@ class SystemStore {
   get securityLevel() { return this.data?.security_level ?? 'null'; }
   get pois(): POI[] { return this.data?.pois ?? []; }
   get connections() { return this.data?.connections ?? []; }
-  get nearbyPlayers() { return this.data?.nearby_players ?? []; }
+  get nearbyPlayers(): NearbyPlayer[] {
+    // Prefer the more-frequent state_update nearby list if available
+    return this.nearbyFromUpdate.length > 0
+      ? this.nearbyFromUpdate
+      : (this.data?.nearby_players ?? []);
+  }
   get wrecks() { return this.data?.wrecks ?? []; }
   get asteroids(): POI[] {
     return this.pois.filter(p => p.type === 'asteroid');
   }
   get stations(): POI[] {
     return this.pois.filter(p => p.type === 'station');
+  }
+
+  setNearby(nearby: NearbyPlayer[]) {
+    this.nearbyFromUpdate = nearby;
   }
 
   update(partial: Partial<SystemInfo>) {

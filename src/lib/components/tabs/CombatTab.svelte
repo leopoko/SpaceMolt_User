@@ -37,20 +37,21 @@
           <p class="tab-section-title">Players</p>
           <div class="target-list">
             {#each combatStore.scanResult.targets as target}
+              {@const tid = target.id ?? target.player_id ?? ''}
               <div
                 class="target-item"
-                class:selected={selectedTarget === target.id}
-                onclick={() => { selectedTarget = selectedTarget === target.id ? null : target.id; }}
+                class:selected={selectedTarget === tid}
+                onclick={() => { selectedTarget = selectedTarget === tid ? null : tid; }}
                 role="button"
                 tabindex="0"
-                onkeydown={(e) => e.key === 'Enter' && (selectedTarget = target.id)}
+                onkeydown={(e) => e.key === 'Enter' && (selectedTarget = tid)}
               >
                 <div class="target-info">
                   <span class="target-name">{target.username}</span>
-                  <span class="target-ship mono">{target.ship_type}</span>
+                  <span class="target-ship mono">{target.ship_type ?? target.ship_class ?? '?'}</span>
                 </div>
                 <span class="material-icons target-icon">
-                  {target.visible ? 'visibility' : 'visibility_off'}
+                  {target.visible !== false ? 'visibility' : 'visibility_off'}
                 </span>
               </div>
             {/each}
@@ -95,17 +96,18 @@
         {#if systemStore.nearbyPlayers.length > 0}
           <div class="target-list">
             {#each systemStore.nearbyPlayers as player}
+              {@const pid = player.id ?? player.player_id ?? ''}
               <div
                 class="target-item"
-                class:selected={selectedTarget === player.id}
-                onclick={() => { selectedTarget = selectedTarget === player.id ? null : player.id; }}
+                class:selected={selectedTarget === pid}
+                onclick={() => { selectedTarget = selectedTarget === pid ? null : pid; }}
                 role="button"
                 tabindex="0"
-                onkeydown={(e) => e.key === 'Enter' && (selectedTarget = player.id)}
+                onkeydown={(e) => e.key === 'Enter' && (selectedTarget = pid)}
               >
                 <div class="target-info">
                   <span class="target-name">{player.username}</span>
-                  <span class="target-ship mono">{player.ship_type}</span>
+                  <span class="target-ship mono">{player.ship_type ?? player.ship_class ?? '?'}</span>
                 </div>
               </div>
             {/each}
