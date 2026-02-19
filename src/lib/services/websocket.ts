@@ -1544,12 +1544,15 @@ class WebSocketService {
 
   tradeOffer(targetId: string, offerCredits: number, offerItems: Record<string, number>, requestCredits: number, requestItems: Record<string, number>) {
     tradeStore.loading = true;
+    // Server expects arrays of {item_id, quantity}, not Record objects
+    const offerArr = Object.entries(offerItems).map(([item_id, quantity]) => ({ item_id, quantity }));
+    const requestArr = Object.entries(requestItems).map(([item_id, quantity]) => ({ item_id, quantity }));
     this.send({ type: 'trade_offer', payload: {
       target_id: targetId,
       offer_credits: offerCredits,
-      offer_items: offerItems,
+      offer_items: offerArr,
       request_credits: requestCredits,
-      request_items: requestItems,
+      request_items: requestArr,
     } });
   }
 
