@@ -31,9 +31,12 @@
 
   // --- Create order form ---
   let orderItemInput = $state('');
+  let orderItemId = $state('');  // resolved item_id (set by quickBuy prefill)
   let orderPrice = $state<number | string>('');
   let orderQty = $state<number | string>('');
   let orderType = $state<'buy' | 'sell'>('buy');
+  let createOrderEl: HTMLElement | undefined = $state();
+  let qtyInputEl: HTMLInputElement | undefined = $state();
 
   // Autocomplete
   let showSuggestions = $state(false);
@@ -147,35 +150,52 @@
     const qty = Number(orderQty);
     if (!itemName || qty <= 0 || price <= 0) return;
 
-    let itemId = itemName;
-    const marketMatch = marketStore.items.find(i => i.item_name.toLowerCase() === itemName.toLowerCase());
-    if (marketMatch) {
-      itemId = marketMatch.item_id;
-    } else {
-      const cargoMatch = shipStore.cargo.find(c => (c.name ?? c.item_id).toLowerCase() === itemName.toLowerCase());
-      if (cargoMatch) itemId = cargoMatch.item_id;
+    let itemId = orderItemId || itemName;
+    if (!orderItemId) {
+      const marketMatch = marketStore.items.find(i => i.item_name.toLowerCase() === itemName.toLowerCase());
+      if (marketMatch) {
+        itemId = marketMatch.item_id;
+      } else {
+        const cargoMatch = shipStore.cargo.find(c => (c.name ?? c.item_id).toLowerCase() === itemName.toLowerCase());
+        if (cargoMatch) itemId = cargoMatch.item_id;
+      }
     }
 
+    const label = `${orderType === 'buy' ? 'Buy' : 'Sell'} ${qty}x ${itemName} @₡${price}`;
     if (orderType === 'buy') {
-      ws.createBuyOrder(itemId, qty, price);
+      actionQueueStore.enqueue(label, () => ws.createBuyOrder(itemId, qty, price));
     } else {
-      ws.createSellOrder(itemId, qty, price);
+      actionQueueStore.enqueue(label, () => ws.createSellOrder(itemId, qty, price));
     }
     orderItemInput = '';
+    orderItemId = '';
     orderPrice = '';
     orderQty = '';
   }
 
-  function cancelOrder(orderId: string) {
-    ws.cancelOrder(orderId);
+  function cancelOrder(orderId: string, itemName: string) {
+    actionQueueStore.enqueue(`Cancel order: ${itemName}`, () => ws.cancelOrder(orderId));
   }
 
+  /** Buy button: prefill Create Order form and scroll to it */
   function quickBuy(item: MarketItem, order: MarketOrderEntry) {
-    ws.createBuyOrder(item.item_id, order.quantity, order.price_each);
+    orderType = 'buy';
+    orderItemInput = item.item_name;
+    orderItemId = item.item_id;
+    orderPrice = order.price_each;
+    orderQty = '';
+    // Scroll to Create Order and focus quantity input
+    setTimeout(() => {
+      createOrderEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      qtyInputEl?.focus();
+    }, 50);
   }
 
   function quickSell(item: MarketItem, order: MarketOrderEntry) {
-    ws.createSellOrder(item.item_id, order.quantity, order.price_each);
+    actionQueueStore.enqueue(
+      `Sell ${order.quantity}x ${item.item_name} @₡${order.price_each}`,
+      () => ws.createSellOrder(item.item_id, order.quantity, order.price_each)
+    );
   }
 
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
@@ -343,7 +363,7 @@
                     <td class="num mono">{order.quantity}</td>
                     <td class="num mono">{order.remaining}</td>
                     <td>
-                      <button class="action-btn cancel-btn" onclick={() => cancelOrder(order.order_id)}>Cancel</button>
+                      <button class="action-btn cancel-btn" onclick={() => cancelOrder(order.order_id, order.item_name)}>Cancel</button>
                     </td>
                   </tr>
                 {/each}
@@ -356,6 +376,7 @@
       </Card>
 
       <!-- Create Order -->
+      <div bind:this={createOrderEl}>
       <Card class="space-card">
         <Content>
           <p class="tab-section-title">Create Order</p>
@@ -382,7 +403,7 @@
                 bind:value={orderItemInput}
                 onfocus={onInputFocus}
                 onblur={onInputBlur}
-                oninput={() => { showSuggestions = true; }}
+                oninput={() => { showSuggestions = true; orderItemId = ''; }}
               />
               {#if showSuggestions && suggestions.length > 0}
                 <ul class="suggestion-list">
@@ -410,6 +431,7 @@
                 class="text-input num-input"
                 placeholder="Quantity"
                 bind:value={orderQty}
+                bind:this={qtyInputEl}
                 min="1"
               />
             </div>
@@ -425,6 +447,7 @@
           </Button>
         </Content>
       </Card>
+      </div>
     </div>
 
     <!-- Cargo + Storage with memo prices -->
@@ -722,11 +745,11 @@
     margin-left: auto;
   }
 
-  .buy-btn { border-color: rgba(76,175,80,0.3); color: #4caf50; }
-  .buy-btn:hover { background: rgba(76,175,80,0.1); }
+  .buy-btn { border-color: rgba(255,152,0,0.3); color: #ff9800; }
+  .buy-btn:hover { background: rgba(255,152,0,0.1); }
 
-  .sell-btn { border-color: rgba(255,152,0,0.3); color: #ff9800; }
-  .sell-btn:hover { background: rgba(255,152,0,0.1); }
+  .sell-btn { border-color: rgba(76,175,80,0.3); color: #4caf50; }
+  .sell-btn:hover { background: rgba(76,175,80,0.1); }
 
   .cancel-btn { border-color: rgba(244,67,54,0.3); color: #ef5350; }
   .cancel-btn:hover { background: rgba(244,67,54,0.1); }
