@@ -140,6 +140,15 @@ export interface ShipClass {
   base_cargo: number;
   price: number;
   description: string;
+  weapon_slots?: number;
+  defense_slots?: number;
+  utility_slots?: number;
+  cpu_capacity?: number;
+  power_capacity?: number;
+  base_armor?: number;
+  base_speed?: number;
+  base_shield_recharge?: number;
+  required_skills?: Record<string, number>;
 }
 
 // ---- Module ----
@@ -404,14 +413,26 @@ export interface Recipe {
 export interface Faction {
   id: string;
   name: string;
+  tag?: string;
   description: string;
+  charter?: string;
   leader_id: string;
-  leader_name: string;
-  members: FactionMember[];
-  wars: FactionWar[];
-  allies: string[];
-  credits: number;
-  standing: number;
+  leader_name?: string;      // legacy
+  leader_username?: string;  // actual API field
+  member_count?: number;
+  members?: FactionMember[];
+  wars?: FactionWar[];
+  allies?: string[];
+  credits?: number;
+  standing?: number;
+  owned_bases?: number;
+  primary_color?: string;
+  secondary_color?: string;
+  is_member?: boolean;
+  is_ally?: boolean;
+  is_enemy?: boolean;
+  at_war?: boolean;
+  created_at?: string;
 }
 
 export interface FactionMember {
@@ -607,6 +628,55 @@ export interface CatalogResponse {
 // Generic catalog entry – each catalog type has different fields
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CatalogEntry = Record<string, any>;
+
+// ---- Forum / Thread ----
+
+export interface ForumThread {
+  id: string;
+  title: string;
+  content: string;
+  author_id: string;
+  author: string;
+  author_empire?: string;
+  author_faction_tag?: string;
+  category: ForumCategory;
+  upvotes: number;
+  reply_count: number;
+  replies?: ForumReply[];
+  created_at: string;
+  updated_at: string;
+  pinned?: boolean;
+  locked?: boolean;
+  is_dev_team?: boolean;
+}
+
+export interface ForumReply {
+  id: string;
+  thread_id: string;
+  content: string;
+  author_id: string;
+  author: string;
+  author_empire?: string;
+  author_faction_tag?: string;
+  upvotes: number;
+  created_at: string;
+  is_dev_team?: boolean;
+}
+
+export interface ForumListResponse {
+  threads: ForumThread[];
+  page: number;
+  total: number;
+  per_page: number;
+  categories: string[];
+}
+
+export interface ForumThreadDetail {
+  thread: ForumThread;
+  replies: ForumReply[];
+}
+
+export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'factions' | 'strategies' | 'features' | string;
 
 // ---- Game State (full snapshot) ----
 

@@ -17,7 +17,7 @@ export const TABS: TabDef[] = [
   { label: 'Trading',    icon: 'storefront' },
   { label: 'Ship',       icon: 'rocket' },
   { label: 'Crafting',   icon: 'precision_manufacturing' },
-  { label: 'Faction',    icon: 'groups' },
+  { label: 'Community',  icon: 'groups' },
   { label: 'Base',       icon: 'home' },
   { label: 'Info',       icon: 'person' },
   { label: 'Settings',   icon: 'settings' }
@@ -29,8 +29,19 @@ class UiStore {
   notification = $state<string | null>(null);
   notificationTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 
+  // Cross-tab navigation: Crafting search prefill
+  craftingSearch = $state('');
+  craftingSearchMode = $state<'all' | 'input' | 'output'>('all');
+
   setTab(tab: TabDef) {
     this.activeTab = tab;
+  }
+
+  /** Navigate to Crafting tab with search prefilled */
+  navigateToCrafting(itemId: string, mode: 'input' | 'output') {
+    this.craftingSearch = itemId;
+    this.craftingSearchMode = mode;
+    this.activeTab = TABS.find(t => t.label === 'Crafting') ?? TABS[5];
   }
 
   setDarkMode(val: boolean) {
