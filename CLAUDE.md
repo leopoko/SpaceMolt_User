@@ -235,6 +235,57 @@ ws.craft(recipeId, quantity)
 
 ---
 
+## コマンドの種類と応答フロー
+
+サーバーコマンドは **2種類** ある:
+
+### Query コマンド（即時応答、制限なし）
+tick を消費せず即座に結果が返る。何度でも呼べる。
+
+```
+Client → { type: "get_system" }
+Server ← { type: "ok", payload: { action: "get_system", system: {...} } }
+```
+
+該当: `get_system`, `get_status`, `scan`, `view_market`, `view_orders`, `get_recipes`, `view_storage`, `list_ships`, `get_ships` 等
+
+### Mutation コマンド（tick消費、3段階応答）
+1tickに1つだけ実行可能。**応答は3段階**:
+
+```
+1. Client → { type: "travel", payload: { target_poi: "frontier_belt" } }
+2. Server ← { type: "ok", payload: { command: "travel", pending: true, message: "..." } }
+3. Server ← { type: "action_result", payload: { command: "travel", tick: 123, result: {...} } }
+         or { type: "action_error", payload: { command: "travel", tick: 123, code: "...", message: "..." } }
+```
+
+- **ステップ2 (`ok`)**: コマンド受付確認。次のtickで実行予定。
+- **ステップ3 (`action_result`)**: tick実行後の成功結果。`payload.command` でどのコマンドか識別。
+- **ステップ3 (`action_error`)**: tick実行後の失敗。`payload.command` でどのコマンドか識別。
+- **`error` type**: コマンド受付前のバリデーションエラー（例: "Systems are not connected"）。
+  `action_result`/`action_error` とは別物。travel/jump 中にこれが来る場合もあるため、
+  `error` ハンドラでも travel state をクリアする必要がある。
+
+該当: `travel`, `jump`, `dock`, `undock`, `attack`, `mine`, `buy`, `sell`, `craft` 等
+
+### travel の action_result 例
+```json
+{
+  "type": "action_result",
+  "payload": {
+    "command": "travel",
+    "tick": 109050,
+    "result": {
+      "action": "arrived",
+      "poi": "Expedition Launch",
+      "poi_id": "frontier_launch"
+    }
+  }
+}
+```
+
+---
+
 ## サーバーメッセージ（受信）
 
 全メッセージの形式: `{ type: string, payload: {...} }`
@@ -245,9 +296,13 @@ ws.craft(recipeId, quantity)
 | `logged_in` | player/ship/system の初期化 |
 | `state_update` | player/ship/modules/nearby/in_combat/tick を更新（高頻度） |
 | `tick` | tick番号更新 + アクションキュー実行トリガー |
+| `ok` | Query結果 or Mutation受付確認（`payload.action` / `payload.command` で分岐） |
+| `action_result` | Mutationコマンドの成功結果（`payload.command` で識別） |
+| `action_error` | Mutationコマンドの失敗（`payload.command` で識別） |
+| `error` | バリデーションエラー（travel/jump中なら state クリア） |
 | `docked` | playerStore に docked_at_base をセット |
 | `undocked` | playerStore の docked_at_base を null にクリア |
-| `arrived` / `jumped` | 移動完了 |
+| `arrived` / `jumped` | 移動完了（レガシー、後方互換用に残存） |
 | `travel_update` | ETA更新 |
 | `combat_update` | 戦闘イベント |
 | `scan_result` | スキャン結果 |
@@ -257,8 +312,6 @@ ws.craft(recipeId, quantity)
 | `ship_list` / `ship_catalog` | 艦船情報 |
 | `craft_result` / `recipes` | クラフト関連 |
 | `chat_message` | チャット |
-| `error` | エラー（eventsStore に追加） |
-| `ok` | 成功通知 |
 
 ---
 
