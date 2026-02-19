@@ -8,8 +8,16 @@
   import { baseStore } from '$lib/stores/base.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
   import { ws } from '$lib/services/websocket';
   import type { MarketItem, MarketOrderEntry } from '$lib/types/game';
+
+  // Auto-refresh market when Trading tab is opened while docked
+  $effect(() => {
+    if (uiStore.activeTab.label === 'Trading' && playerStore.isDocked) {
+      loadMarket();
+    }
+  });
 
   // --- Expand state for item rows ---
   let expandedItems = $state<Set<string>>(new Set());
@@ -23,9 +31,12 @@
 
   // --- Create order form ---
   let orderItemInput = $state('');
+  let orderItemId = $state('');  // resolved item_id (set by quickBuy prefill)
   let orderPrice = $state<number | string>('');
   let orderQty = $state<number | string>('');
   let orderType = $state<'buy' | 'sell'>('buy');
+  let createOrderEl: HTMLElement | undefined = $state();
+  let qtyInputEl: HTMLInputElement | undefined = $state();
 
   // Autocomplete
   let showSuggestions = $state(false);
@@ -139,35 +150,60 @@
     const qty = Number(orderQty);
     if (!itemName || qty <= 0 || price <= 0) return;
 
-    let itemId = itemName;
-    const marketMatch = marketStore.items.find(i => i.item_name.toLowerCase() === itemName.toLowerCase());
-    if (marketMatch) {
-      itemId = marketMatch.item_id;
-    } else {
-      const cargoMatch = shipStore.cargo.find(c => (c.name ?? c.item_id).toLowerCase() === itemName.toLowerCase());
-      if (cargoMatch) itemId = cargoMatch.item_id;
+    let itemId = orderItemId || itemName;
+    if (!orderItemId) {
+      const marketMatch = marketStore.items.find(i => i.item_name.toLowerCase() === itemName.toLowerCase());
+      if (marketMatch) {
+        itemId = marketMatch.item_id;
+      } else {
+        const cargoMatch = shipStore.cargo.find(c => (c.name ?? c.item_id).toLowerCase() === itemName.toLowerCase());
+        if (cargoMatch) itemId = cargoMatch.item_id;
+      }
     }
 
+    const label = `${orderType === 'buy' ? 'Buy' : 'Sell'} ${qty}x ${itemName} @₡${price}`;
     if (orderType === 'buy') {
-      ws.createBuyOrder(itemId, qty, price);
+      actionQueueStore.enqueue(label, () => ws.createBuyOrder(itemId, qty, price));
     } else {
-      ws.createSellOrder(itemId, qty, price);
+      actionQueueStore.enqueue(label, () => ws.createSellOrder(itemId, qty, price));
     }
     orderItemInput = '';
+    orderItemId = '';
     orderPrice = '';
     orderQty = '';
   }
 
-  function cancelOrder(orderId: string) {
-    ws.cancelOrder(orderId);
+  function cancelOrder(orderId: string, itemName: string) {
+    actionQueueStore.enqueue(`Cancel order: ${itemName}`, () => ws.cancelOrder(orderId));
   }
 
+  /** Buy button: prefill Create Order form and scroll to it */
   function quickBuy(item: MarketItem, order: MarketOrderEntry) {
-    ws.createBuyOrder(item.item_id, order.quantity, order.price_each);
+    orderType = 'buy';
+    orderItemInput = item.item_name;
+    orderItemId = item.item_id;
+    orderPrice = order.price_each;
+    orderQty = '';
+    // Scroll to Create Order and focus quantity input
+    setTimeout(() => {
+      createOrderEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      qtyInputEl?.focus();
+    }, 50);
   }
 
   function quickSell(item: MarketItem, order: MarketOrderEntry) {
-    ws.createSellOrder(item.item_id, order.quantity, order.price_each);
+    actionQueueStore.enqueue(
+      `Sell ${order.quantity}x ${item.item_name} @₡${order.price_each}`,
+      () => ws.createSellOrder(item.item_id, order.quantity, order.price_each)
+    );
+  }
+
+  function gotoCraftOutput(itemId: string) {
+    uiStore.navigateToCrafting(itemId, 'output');
+  }
+
+  function gotoCraftInput(itemId: string) {
+    uiStore.navigateToCrafting(itemId, 'input');
   }
 
   let currentMemo = $derived(marketStore.baseName ? marketMemoStore.getMemo(marketStore.baseName) : null);
@@ -253,26 +289,6 @@
                     <td colspan="5">
                       <div class="detail-grid">
                         <div class="detail-section">
-                          <p class="detail-title sell-label">For Sale (Buy from)</p>
-                          {#if item.sell_orders.length > 0}
-                            <table class="detail-table">
-                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
-                              <tbody>
-                                {#each item.sell_orders as order}
-                                  <tr>
-                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
-                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
-                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
-                                  </tr>
-                                {/each}
-                              </tbody>
-                            </table>
-                          {:else}
-                            <p class="detail-empty">No sell orders</p>
-                          {/if}
-                        </div>
-
-                        <div class="detail-section">
                           <p class="detail-title buy-label">Wanted (Sell to)</p>
                           {#if item.buy_orders.length > 0}
                             <table class="detail-table">
@@ -291,6 +307,34 @@
                             <p class="detail-empty">No buy orders</p>
                           {/if}
                         </div>
+
+                        <div class="detail-section">
+                          <p class="detail-title sell-label">For Sale (Buy from)</p>
+                          {#if item.sell_orders.length > 0}
+                            <table class="detail-table">
+                              <thead><tr><th class="num">Price</th><th class="num">Qty</th><th></th></tr></thead>
+                              <tbody>
+                                {#each item.sell_orders as order}
+                                  <tr>
+                                    <td class="num mono sell-price">₡{order.price_each.toLocaleString()}</td>
+                                    <td class="num mono">{order.quantity}{#if order.source}<span class="source-tag">{order.source}</span>{/if}</td>
+                                    <td><button class="action-btn buy-btn" onclick={(e) => { e.stopPropagation(); quickBuy(item, order); }}>Buy</button></td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          {:else}
+                            <p class="detail-empty">No sell orders</p>
+                          {/if}
+                        </div>
+                      </div>
+                      <div class="craft-links">
+                        <button class="craft-link-btn" onclick={(e) => { e.stopPropagation(); gotoCraftOutput(item.item_id); }} title="Recipes that produce {item.item_name}">
+                          <span class="material-icons" style="font-size:13px">precision_manufacturing</span> Craft this
+                        </button>
+                        <button class="craft-link-btn" onclick={(e) => { e.stopPropagation(); gotoCraftInput(item.item_id); }} title="Recipes that use {item.item_name}">
+                          <span class="material-icons" style="font-size:13px">build</span> Use in craft
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -335,7 +379,7 @@
                     <td class="num mono">{order.quantity}</td>
                     <td class="num mono">{order.remaining}</td>
                     <td>
-                      <button class="action-btn cancel-btn" onclick={() => cancelOrder(order.order_id)}>Cancel</button>
+                      <button class="action-btn cancel-btn" onclick={() => cancelOrder(order.order_id, order.item_name)}>Cancel</button>
                     </td>
                   </tr>
                 {/each}
@@ -348,6 +392,7 @@
       </Card>
 
       <!-- Create Order -->
+      <div bind:this={createOrderEl}>
       <Card class="space-card">
         <Content>
           <p class="tab-section-title">Create Order</p>
@@ -374,7 +419,7 @@
                 bind:value={orderItemInput}
                 onfocus={onInputFocus}
                 onblur={onInputBlur}
-                oninput={() => { showSuggestions = true; }}
+                oninput={() => { showSuggestions = true; orderItemId = ''; }}
               />
               {#if showSuggestions && suggestions.length > 0}
                 <ul class="suggestion-list">
@@ -402,6 +447,7 @@
                 class="text-input num-input"
                 placeholder="Quantity"
                 bind:value={orderQty}
+                bind:this={qtyInputEl}
                 min="1"
               />
             </div>
@@ -417,6 +463,7 @@
           </Button>
         </Content>
       </Card>
+      </div>
     </div>
 
     <!-- Cargo + Storage with memo prices -->
@@ -687,6 +734,27 @@
     color: #90a4ae;
   }
 
+  .craft-links {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px 4px 30px;
+  }
+
+  .craft-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: 1px solid rgba(124,77,255,0.25);
+    color: #b388ff;
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .craft-link-btn:hover { background: rgba(124,77,255,0.1); }
+
   .detail-empty {
     font-size: 0.65rem;
     color: #263238;
@@ -714,11 +782,11 @@
     margin-left: auto;
   }
 
-  .buy-btn { border-color: rgba(76,175,80,0.3); color: #4caf50; }
-  .buy-btn:hover { background: rgba(76,175,80,0.1); }
+  .buy-btn { border-color: rgba(255,152,0,0.3); color: #ff9800; }
+  .buy-btn:hover { background: rgba(255,152,0,0.1); }
 
-  .sell-btn { border-color: rgba(255,152,0,0.3); color: #ff9800; }
-  .sell-btn:hover { background: rgba(255,152,0,0.1); }
+  .sell-btn { border-color: rgba(76,175,80,0.3); color: #4caf50; }
+  .sell-btn:hover { background: rgba(76,175,80,0.1); }
 
   .cancel-btn { border-color: rgba(244,67,54,0.3); color: #ef5350; }
   .cancel-btn:hover { background: rgba(244,67,54,0.1); }

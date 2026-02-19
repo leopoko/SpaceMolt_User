@@ -140,6 +140,15 @@ export interface ShipClass {
   base_cargo: number;
   price: number;
   description: string;
+  weapon_slots?: number;
+  defense_slots?: number;
+  utility_slots?: number;
+  cpu_capacity?: number;
+  power_capacity?: number;
+  base_armor?: number;
+  base_speed?: number;
+  base_shield_recharge?: number;
+  required_skills?: Record<string, number>;
 }
 
 // ---- Module ----

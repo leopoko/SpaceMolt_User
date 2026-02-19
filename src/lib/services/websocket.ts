@@ -680,6 +680,66 @@ class WebSocketService {
           this.getFactionInfo();
           break;
         }
+        if (pl.action === 'list_ships' || ((pl as Record<string, unknown>).active_ship_id && (pl as Record<string, unknown>).ships)) {
+          const raw = msg.payload as Record<string, unknown>;
+          const rawShips = (raw.ships as Array<Record<string, unknown>>) ?? [];
+          // Normalize fleet ship fields: server sends ship_id, class_name, class_id, hull "100/100"
+          const ships = rawShips.map(rs => {
+            let hull = 0, max_hull = 1;
+            if (typeof rs.hull === 'string' && rs.hull.includes('/')) {
+              const [h, m] = rs.hull.split('/').map(Number);
+              hull = h; max_hull = m;
+            } else if (typeof rs.hull === 'number') {
+              hull = rs.hull; max_hull = (rs.max_hull as number) ?? hull;
+            }
+            return {
+              id: (rs.ship_id as string) ?? (rs.id as string) ?? '',
+              name: (rs.class_name as string) ?? (rs.name as string) ?? '',
+              type: (rs.class_id as string) ?? (rs.type as string) ?? '',
+              hull,
+              max_hull,
+              fuel: 0,
+              max_fuel: 0,
+              cargo_used: (rs.cargo_used as number) ?? 0,
+              modules: (rs.modules as number) ?? 0,
+              location: (rs.location as string) ?? '',
+              is_active: (rs.is_active as boolean) ?? false,
+              cargo: [],
+            };
+          });
+          shipStore.updateFleet({
+            ships: ships as never,
+            active_ship_id: (raw.active_ship_id as string) ?? '',
+          });
+          break;
+        }
+        if (pl.action === 'get_ships' || ((pl as Record<string, unknown>).ships && (pl as Record<string, unknown>).count && !(pl as Record<string, unknown>).active_ship_id)) {
+          const raw = msg.payload as Record<string, unknown>;
+          const rawShips = (raw.ships as Array<Record<string, unknown>>) ?? [];
+          // Normalize catalog fields: server sends base_shield/cargo_capacity
+          const catalog = rawShips.map(rs => ({
+            id: (rs.id as string) ?? '',
+            name: (rs.name as string) ?? '',
+            class: (rs.class as string) ?? '',
+            description: (rs.description as string) ?? '',
+            price: (rs.price as number) ?? 0,
+            base_hull: (rs.base_hull as number) ?? 0,
+            base_shields: (rs.base_shield as number) ?? (rs.base_shields as number) ?? 0,
+            base_fuel: (rs.base_fuel as number) ?? 0,
+            base_cargo: (rs.cargo_capacity as number) ?? (rs.base_cargo as number) ?? 0,
+            weapon_slots: (rs.weapon_slots as number) ?? 0,
+            defense_slots: (rs.defense_slots as number) ?? 0,
+            utility_slots: (rs.utility_slots as number) ?? 0,
+            cpu_capacity: (rs.cpu_capacity as number) ?? 0,
+            power_capacity: (rs.power_capacity as number) ?? 0,
+            base_armor: (rs.base_armor as number) ?? 0,
+            base_speed: (rs.base_speed as number) ?? 0,
+            base_shield_recharge: (rs.base_shield_recharge as number) ?? 0,
+            required_skills: (rs.required_skills as Record<string, number>) ?? undefined,
+          }));
+          shipStore.catalog = catalog as never;
+          break;
+        }
         if (pl.action === 'get_system' && pl.system) {
           const raw = pl.system as Record<string, unknown>;
           // Normalize POIs: server sends online/has_base/base_id/base_name
