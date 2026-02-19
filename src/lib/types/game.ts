@@ -537,6 +537,33 @@ export interface StateUpdatePayload {
   in_combat?: boolean;
 }
 
+// ---- Catalog ----
+
+export type CatalogType = 'ships' | 'skills' | 'recipes' | 'items';
+
+export interface CatalogRequest {
+  type: CatalogType;
+  id?: string;
+  category?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CatalogResponse {
+  type: CatalogType;
+  items: CatalogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  message?: string;
+}
+
+// Generic catalog entry – each catalog type has different fields
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type CatalogEntry = Record<string, any>;
+
 // ---- Game State (full snapshot) ----
 
 export interface GameState {
