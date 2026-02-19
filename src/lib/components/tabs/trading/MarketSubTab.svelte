@@ -133,11 +133,15 @@
   }
 
   function doRepair() {
-    actionQueueStore.enqueue('Repair', () => ws.repair());
+    actionQueueStore.enqueue('Repair', () => ws.repair(), {
+      command: { type: 'repair' }
+    });
   }
 
   function doRefuel() {
-    actionQueueStore.enqueue('Refuel', () => ws.refuel());
+    actionQueueStore.enqueue('Refuel', () => ws.refuel(), {
+      command: { type: 'refuel' }
+    });
   }
 
   /** Get total inventory for an item (cargo + storage) */
