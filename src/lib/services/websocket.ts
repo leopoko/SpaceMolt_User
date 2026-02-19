@@ -327,6 +327,10 @@ class WebSocketService {
         if (cmd === 'travel' || cmd === 'jump') {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         }
+        if (cmd === 'craft') {
+          craftingStore.setInProgress(false);
+          craftingStore.setLastResult(errMsg);
+        }
         eventsStore.add({ type: 'error', message: errMsg });
         break;
       }
@@ -717,7 +721,7 @@ class WebSocketService {
   getRecipes() { this.send({ type: 'get_recipes' }); }
   craft(recipeId: string, quantity: number) {
     craftingStore.setInProgress(true);
-    this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
+    this.send({ type: 'craft', payload: { recipe_id: recipeId, quantity } });
   }
 
   // ---- Storage / Base ----
