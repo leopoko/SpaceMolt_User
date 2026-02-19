@@ -128,14 +128,14 @@
   }
 
   function doWithdrawItem() {
-    if (!withdrawItemId.trim() || withdrawQty <= 0) return;
-    const itemId = withdrawItemId.trim();
-    const qty = withdrawQty;
+    if (!depositItemId.trim() || depositQty <= 0) return;
+    const itemId = depositItemId.trim();
+    const qty = depositQty;
     actionQueueStore.enqueue(`Withdraw ${qty}x ${itemId}`, () => ws.withdrawItems(itemId, qty), {
       command: { type: 'withdraw_items', params: { itemId, quantity: qty } }
     });
-    withdrawItemId = '';
-    withdrawQty = 1;
+    depositItemId = '';
+    depositQty = 1;
   }
 
   /** Deposit a specific cargo item (all quantity) */
@@ -216,12 +216,12 @@
   function selectStoredRow(itemId: string) {
     if (selectedStoredItem === itemId) {
       selectedStoredItem = null;
-      withdrawItemId = '';
+      depositItemId = '';
     } else {
       selectedStoredItem = itemId;
-      withdrawItemId = itemId;
+      depositItemId = itemId;
       const stItem = baseStore.items.find(i => i.item_id === itemId);
-      if (stItem) withdrawQty = stItem.quantity;
+      if (stItem) depositQty = stItem.quantity;
     }
   }
 
