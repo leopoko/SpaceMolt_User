@@ -12,12 +12,16 @@
 
   function scanTarget(e: Event, targetId: string, username: string) {
     e.stopPropagation();
-    actionQueueStore.enqueue(`Scan ${username}`, () => ws.scan(targetId));
+    actionQueueStore.enqueue(`Scan ${username}`, () => ws.scan(targetId), {
+      command: { type: 'scan', params: { targetId, username } }
+    });
   }
 
   function attackTarget(e: Event, targetId: string, username: string) {
     e.stopPropagation();
-    actionQueueStore.enqueue(`Attack ${username}`, () => ws.attack(targetId));
+    actionQueueStore.enqueue(`Attack ${username}`, () => ws.attack(targetId), {
+      command: { type: 'attack', params: { targetId, username } }
+    });
   }
 
   function selectTarget(targetId: string) {

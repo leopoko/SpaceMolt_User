@@ -198,7 +198,10 @@ class WebSocketService {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         }
         // Stop action queue on error (e.g. mine no_resources)
-        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+        // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
+        if (actionQueueStore.currentContinueOnError) {
+          eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
+        } else if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
         }
@@ -314,6 +317,13 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
           this.viewStorage();
+        } else if (cmd === 'set_home_base' && result) {
+          const message = (result.message as string) ?? 'Home base updated';
+          eventsStore.add({ type: 'info', message });
+          // Update player's home_base field
+          if (result.base_id) {
+            playerStore.update({ home_base: result.base_id as string });
+          }
         } else if (cmd === 'craft') {
           const message = (result?.message as string) ?? 'Craft complete';
           craftingStore.setLastResult(message);
@@ -346,7 +356,10 @@ class WebSocketService {
         }
         eventsStore.add({ type: 'error', message: errMsg });
         // Stop action queue on action failure
-        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+        // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
+        if (actionQueueStore.currentContinueOnError) {
+          eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
+        } else if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
         }
@@ -1009,6 +1022,8 @@ class WebSocketService {
 
   depositCredits(amount: number) { this.send({ type: 'deposit_credits', payload: { amount } }); }
   withdrawCredits(amount: number) { this.send({ type: 'withdraw_credits', payload: { amount } }); }
+
+  setHomeBase(baseId: string) { this.send({ type: 'set_home_base', payload: { base_id: baseId } }); }
 
   // ---- Faction ----
 
