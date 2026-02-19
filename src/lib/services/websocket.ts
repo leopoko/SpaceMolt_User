@@ -175,10 +175,15 @@ class WebSocketService {
       }
 
       case 'error': {
-        const pl = p<{ code?: string; message?: string }>(msg);
+        const pl = p<{ code?: string; message?: string; command?: string }>(msg);
         const errMsg = pl.message ?? 'Unknown error';
         console.debug('[WS error] code:', pl.code, '| message:', errMsg);
         eventsStore.add({ type: 'error', message: errMsg });
+        // Clear travel state if a travel/jump is in progress
+        // Server sends generic 'error' type for some failures (e.g. not_connected)
+        if (systemStore.travel.in_progress) {
+          systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+        }
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
         }
