@@ -46,6 +46,7 @@
   {:else if state.items.length === 0}
     <p class="empty-hint">No recipes found</p>
   {:else}
+    <CatalogPager page={state.page} totalPages={state.totalPages} {onPageChange} />
     <div class="catalog-grid">
       {#each state.items as recipe}
         <Card class="space-card">
@@ -112,7 +113,7 @@
 </div>
 
 <style>
-  .catalog { max-width: 900px; }
+  .catalog { margin: 0 auto; max-width: 1100px; }
 
   .tab-section-title {
     display: flex;
@@ -132,8 +133,8 @@
   }
 
   .catalog-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 8px;
   }
 
