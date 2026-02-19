@@ -8,6 +8,7 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
+  import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
   import { ws } from '$lib/services/websocket';
   import type { Recipe } from '$lib/types/game';
 
@@ -217,6 +218,12 @@
                 </div>
                 <span class="recipe-output mono">
                   → {(recipe.outputs ?? []).map(o => `${o.quantity}x ${formatItemId(o.item_id)}`).join(', ')}
+                  {#each recipe.outputs ?? [] as o}
+                    {@const mp = marketMemoStore.getItemPrice(o.item_id)}
+                    {#if mp && (mp.best_buy > 0 || mp.best_sell > 0)}
+                      <span class="memo-tag">{#if mp.best_buy > 0}<span class="memo-buy">B:₡{mp.best_buy}</span>{/if}{#if mp.best_sell > 0}{#if mp.best_buy > 0} / {/if}<span class="memo-sell">S:₡{mp.best_sell}</span>{/if}</span>
+                    {/if}
+                  {/each}
                 </span>
               </div>
               {#if canCraft(recipe)}
@@ -261,11 +268,15 @@
             {@const cargoQty = getCargoQty(input.item_id)}
             {@const storageQty = isDocked ? getStorageQty(input.item_id) : 0}
             {@const totalQty = cargoQty + storageQty}
+            {@const inputMp = marketMemoStore.getItemPrice(input.item_id)}
             <div class="material-row" class:ok={have} class:missing={!have}>
               <span class="mat-name">
                 {formatItemId(input.item_id)}
                 {#if storageQty > 0}
                   <span class="source-hint">({cargoQty}+{storageQty})</span>
+                {/if}
+                {#if inputMp && (inputMp.best_buy > 0 || inputMp.best_sell > 0)}
+                  <span class="memo-inline">{#if inputMp.best_buy > 0}<span class="memo-buy">B:₡{inputMp.best_buy}</span>{/if}{#if inputMp.best_sell > 0}{#if inputMp.best_buy > 0} / {/if}<span class="memo-sell">S:₡{inputMp.best_sell}</span>{/if}</span>
                 {/if}
               </span>
               <span class="mat-qty mono">
@@ -284,8 +295,14 @@
 
         <p class="tab-section-title" style="margin-top:12px">Output</p>
         {#each recipe.outputs ?? [] as output}
+          {@const outputMp = marketMemoStore.getItemPrice(output.item_id)}
           <div class="output-row">
-            <span class="mat-name">{formatItemId(output.item_id)}</span>
+            <span class="mat-name">
+              {formatItemId(output.item_id)}
+              {#if outputMp && (outputMp.best_buy > 0 || outputMp.best_sell > 0)}
+                <span class="memo-inline">{#if outputMp.best_buy > 0}<span class="memo-buy">B:₡{outputMp.best_buy}</span>{/if}{#if outputMp.best_sell > 0}{#if outputMp.best_buy > 0} / {/if}<span class="memo-sell">S:₡{outputMp.best_sell}</span>{/if}</span>
+              {/if}
+            </span>
             <span class="mat-qty mono output-qty">
               × {output.quantity * totalMultiplier}
               {#if output.quality_mod}
@@ -691,4 +708,19 @@
   }
 
   .craft-result { font-size: 0.78rem; color: #66bb6a; margin-top: 8px; text-align: center; }
+
+  /* Memo prices */
+  .memo-tag {
+    font-size: 0.55rem;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+
+  .memo-inline {
+    font-size: 0.55rem;
+    font-family: 'Roboto Mono', monospace;
+  }
+
+  .memo-buy { color: #66bb6a; }
+  .memo-sell { color: #ff9800; }
 </style>
