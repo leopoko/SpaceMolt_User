@@ -136,7 +136,7 @@
       const orbitR = Math.sqrt(px * px + py * py);
       if (orbitR < 0.01) { result.set(poi.id, []); continue; }
 
-      const rockCount = 80;
+      const rockCount = 320;
       const rocks: { x: number; y: number; r: number; opacity: number }[] = [];
       const baseR = s * 0.007;
 
