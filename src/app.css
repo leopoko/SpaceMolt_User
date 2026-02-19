@@ -173,6 +173,15 @@ body {
 .progress-hull   { --mdc-theme-primary: var(--space-hull-color) !important; }
 .progress-shield { --mdc-theme-primary: var(--space-shield-color) !important; }
 .progress-fuel   { --mdc-theme-primary: var(--space-fuel-color) !important; }
+.progress-cargo  { --mdc-theme-primary: var(--space-fuel-color) !important; }
+
+/* ---- Progress bar dark track background ---- */
+.mdc-linear-progress__buffer-bar {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+.mdc-linear-progress__buffer {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
 
 /* ---- Section headings inside tabs ---- */
 .tab-section-title {

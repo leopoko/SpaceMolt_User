@@ -672,7 +672,11 @@ class WebSocketService {
 
   // ---- Mining ----
 
-  mine(asteroidId: string) { this.send({ type: 'mine', payload: { target: asteroidId } }); }
+  mine(asteroidId?: string) {
+    const payload: Record<string, string> = {};
+    if (asteroidId) payload.target = asteroidId;
+    this.send({ type: 'mine', payload });
+  }
 
   // ---- Trading ----
 
