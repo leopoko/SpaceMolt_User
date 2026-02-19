@@ -331,12 +331,16 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
           if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
         } else if (cmd === 'uninstall_mod') {
           const modId = (result?.module_id as string) ?? '';
           const message = (result?.message as string) ?? `Module uninstalled: ${modId}`;
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
           if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
         } else if (cmd === 'craft') {
           const message = (result?.message as string) ?? 'Craft complete';
           craftingStore.setLastResult(message);
@@ -1085,8 +1089,8 @@ class WebSocketService {
   listShips() { this.send({ type: 'list_ships' }); }
   getShipCatalog() { this.send({ type: 'get_ships' }); }
   buyShip(shipClass: string) { this.send({ type: 'buy_ship', payload: { ship_class: shipClass } }); }
-  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship: shipId } }); }
-  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship: shipId } }); }
+  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship_id: shipId } }); }
+  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship_id: shipId } }); }
 
   // ---- Module Management ----
 
