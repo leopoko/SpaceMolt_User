@@ -72,19 +72,27 @@
   }
 
   function doJump(systemId: string, systemName: string) {
-    actionQueueStore.enqueue(`Jump → ${systemName}`, () => ws.jump(systemId, systemName));
+    actionQueueStore.enqueue(`Jump → ${systemName}`, () => ws.jump(systemId, systemName), {
+      command: { type: 'jump', params: { systemId, systemName } }
+    });
   }
 
   function doTravel(poiId: string, poiName: string) {
-    actionQueueStore.enqueue(`Travel → ${poiName}`, () => ws.travel(poiId));
+    actionQueueStore.enqueue(`Travel → ${poiName}`, () => ws.travel(poiId), {
+      command: { type: 'travel', params: { poiId, poiName } }
+    });
   }
 
   function doDock(stationId: string, stationName: string) {
-    actionQueueStore.enqueue(`Dock @ ${stationName}`, () => ws.dock(stationId));
+    actionQueueStore.enqueue(`Dock @ ${stationName}`, () => ws.dock(stationId), {
+      command: { type: 'dock', params: { stationId, stationName } }
+    });
   }
 
   function doUndock() {
-    actionQueueStore.enqueue('Undock', () => ws.undock());
+    actionQueueStore.enqueue('Undock', () => ws.undock(), {
+      command: { type: 'undock' }
+    });
   }
 
   function openPM(username: string) {

@@ -18,17 +18,26 @@
   }
 
   function doMine() {
-    actionQueueStore.enqueue('Mine', () => ws.mine(getAsteroidTarget()));
+    const asteroidId = getAsteroidTarget();
+    actionQueueStore.enqueue('Mine', () => ws.mine(asteroidId), {
+      command: { type: 'mine', params: { asteroidId } }
+    });
   }
 
   function doMineRepeat() {
     const n = Math.max(1, Math.min(repeatCount, 999));
+    const asteroidId = getAsteroidTarget();
     for (let i = 0; i < n; i++) {
-      actionQueueStore.enqueue(`Mine [${i + 1}/${n}]`, () => ws.mine(getAsteroidTarget()));
+      actionQueueStore.enqueue(`Mine [${i + 1}/${n}]`, () => ws.mine(asteroidId), {
+        command: { type: 'mine_n', params: { asteroidId, count: n, current: i + 1 } }
+      });
     }
   }
 
   function enqueueConditionalMine(targetPct: number, label: string, asNext = false) {
+    const asteroidId = getAsteroidTarget();
+    const cmdType = targetPct >= 100 ? 'mine_full' : 'mine_pct';
+    const cmd = { type: cmdType, params: { asteroidId, targetPct } };
     const cb = () => {
       if (shipStore.cargoPercent >= targetPct) {
         eventsStore.add({ type: 'info', message: `[Mining] Cargo ${shipStore.cargoPercent.toFixed(0)}% – 停止` });
@@ -39,9 +48,9 @@
       enqueueConditionalMine(targetPct, label, true);
     };
     if (asNext) {
-      actionQueueStore.enqueueNext(label, cb);
+      actionQueueStore.enqueueNext(label, cb, { command: cmd });
     } else {
-      actionQueueStore.enqueue(label, cb);
+      actionQueueStore.enqueue(label, cb, { command: cmd });
     }
   }
 
