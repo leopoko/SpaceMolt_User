@@ -55,7 +55,7 @@
     const spanY = maxY - minY;
     // Use the larger span to keep square coordinate space, add padding
     const span = Math.max(spanX, spanY, 0.5);
-    const pad = span * 0.25;
+    const pad = 0;
     const half = span / 2 + pad;
 
     return {
@@ -308,7 +308,7 @@
 <style>
   .system-map-container {
     width: 100%;
-    aspect-ratio: 2 / 1;
+    aspect-ratio: 1 / 1;
     background: radial-gradient(ellipse at center, rgba(13,21,37,0.9) 0%, rgba(6,10,16,0.95) 100%);
     border: 1px solid rgba(79,195,247,0.12);
     border-radius: 6px;

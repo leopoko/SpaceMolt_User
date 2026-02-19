@@ -28,16 +28,21 @@
     }
   }
 
-  function enqueueConditionalMine(targetPct: number, label: string) {
-    actionQueueStore.enqueue(label, () => {
+  function enqueueConditionalMine(targetPct: number, label: string, asNext = false) {
+    const cb = () => {
       if (shipStore.cargoPercent >= targetPct) {
         eventsStore.add({ type: 'info', message: `[Mining] Cargo ${shipStore.cargoPercent.toFixed(0)}% – 停止` });
         return;
       }
       ws.mine(getAsteroidTarget());
-      // Re-enqueue for next tick
-      enqueueConditionalMine(targetPct, label);
-    });
+      // Re-enqueue as next action so it stays ahead of Travel/Dock etc.
+      enqueueConditionalMine(targetPct, label, true);
+    };
+    if (asNext) {
+      actionQueueStore.enqueueNext(label, cb);
+    } else {
+      actionQueueStore.enqueue(label, cb);
+    }
   }
 
   function doMineUntilPercent() {
