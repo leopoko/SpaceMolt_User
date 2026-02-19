@@ -6,6 +6,9 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import SystemMap from '$lib/components/SystemMap.svelte';
+
+  let nearbyOpen = $state(false);
 
   const secColor: Record<string, string> = {
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
@@ -132,19 +135,24 @@
           <p class="empty-hint">No POIs found</p>
         {/if}
 
-        <!-- Nearby Players -->
+        <!-- Nearby Players (collapsible) -->
         {#if systemStore.nearbyPlayers.length > 0}
-          <p class="tab-section-title" style="margin-top:12px">Nearby Players</p>
-          <div class="player-list">
-            {#each systemStore.nearbyPlayers as np}
-              <div class="player-item">
-                <span class="material-icons" style="font-size:14px;color:{np.in_combat ? '#ff7043' : '#78909c'}"
-                >{np.in_combat ? 'local_fire_department' : 'person'}</span>
-                <span class="player-name">{np.username}</span>
-                <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
-              </div>
-            {/each}
-          </div>
+          <button class="nearby-toggle" onclick={() => nearbyOpen = !nearbyOpen}>
+            <span class="material-icons nearby-arrow" class:nearby-arrow-open={nearbyOpen}>expand_more</span>
+            <span class="tab-section-title" style="margin:0">Nearby Players ({systemStore.nearbyPlayers.length})</span>
+          </button>
+          {#if nearbyOpen}
+            <div class="player-list">
+              {#each systemStore.nearbyPlayers as np}
+                <div class="player-item">
+                  <span class="material-icons" style="font-size:14px;color:{np.in_combat ? '#ff7043' : '#78909c'}"
+                  >{np.in_combat ? 'local_fire_department' : 'person'}</span>
+                  <span class="player-name">{np.username}</span>
+                  <span class="player-ship mono">{np.ship_class ?? np.ship_type ?? '?'}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
         {/if}
       {:else}
         <p class="empty-hint">No system data. Click Refresh.</p>
@@ -198,6 +206,16 @@
       {/if}
     </Content>
   </Card>
+
+  <!-- System Map -->
+  {#if systemStore.data && systemStore.pois.length > 0}
+    <Card class="space-card map-card">
+      <Content>
+        <p class="tab-section-title">System Map</p>
+        <SystemMap pois={systemStore.pois} />
+      </Content>
+    </Card>
+  {/if}
 </div>
 
 <style>
@@ -353,6 +371,34 @@
 
   /* ---- Nearby Players ---- */
 
+  .nearby-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 0;
+    margin-top: 12px;
+    width: 100%;
+    text-align: left;
+  }
+
+  .nearby-toggle:hover {
+    opacity: 0.8;
+  }
+
+  .nearby-arrow {
+    font-size: 18px;
+    color: #546e7a;
+    transition: transform 0.2s ease;
+    transform: rotate(-90deg);
+  }
+
+  .nearby-arrow-open {
+    transform: rotate(0deg);
+  }
+
   .player-list {
     display: flex;
     flex-direction: column;
@@ -424,6 +470,12 @@
     color: #ffb74d;
     font-size: 0.75rem;
     animation: pulse 1.5s infinite;
+  }
+
+  /* ---- System Map ---- */
+
+  :global(.map-card) {
+    grid-column: 2;
   }
 
   @keyframes pulse {

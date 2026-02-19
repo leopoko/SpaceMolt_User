@@ -222,6 +222,7 @@ export interface POI {
   base_id?: string | null;
   base_name?: string | null;
   online?: number;
+  position?: { x: number; y: number };
 }
 
 // Legacy nearby player (from system_info)
