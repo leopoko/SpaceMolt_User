@@ -607,8 +607,8 @@
   .mono { font-family: 'Roboto Mono', monospace; }
   .credits { color: #ffd700; }
   .dim { color: #4a6070; font-size: 0.68rem; }
-  .buy-price { color: #66bb6a; }
-  .sell-price { color: #ff9800; }
+  .market-table td.buy-price, .detail-table td.buy-price, .buy-price { color: #66bb6a; }
+  .market-table td.sell-price, .detail-table td.sell-price, .sell-price { color: #ff9800; }
 
   /* Item rows */
   .item-row {
