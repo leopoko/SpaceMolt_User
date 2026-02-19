@@ -4,7 +4,8 @@ import type {
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry, Module,
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition,
-  ForumThread, ForumReply, ForumCategory
+  ForumThread, ForumReply, ForumCategory,
+  TradeOffer, TradeItems
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -26,6 +27,7 @@ import { forumStore } from '$lib/stores/forum.svelte';
 import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
+import { tradeStore } from '$lib/stores/trade.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -400,6 +402,42 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           const message = (result.message as string) ?? `Jettisoned ${qty}x ${itemId}`;
           eventsStore.add({ type: 'info', message });
+        } else if (cmd === 'trade_offer' && result) {
+          const tradeId = (result.trade_id as string) ?? '';
+          const message = (result.message as string) ?? 'Trade offer sent';
+          if (tradeId) {
+            tradeStore.addOutgoing({
+              trade_id: tradeId,
+              offerer_id: (result.offerer_id as string) ?? '',
+              offerer_name: authStore.username,
+              target_id: (result.target_id as string) ?? '',
+              target_name: (result.target_name as string) ?? (result.target as string) ?? '',
+              credits: (result.credits as number) ?? 0,
+              items: (result.items as TradeItems) ?? {},
+              status: 'pending',
+              created_at: Date.now(),
+            });
+          }
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+        } else if (cmd === 'trade_accept' && result) {
+          const tradeId = (result.trade_id as string) ?? '';
+          const message = (result.message as string) ?? 'Trade accepted!';
+          tradeStore.updateStatus(tradeId, 'completed');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+        } else if (cmd === 'trade_decline' && result) {
+          const tradeId = (result.trade_id as string) ?? '';
+          const message = (result.message as string) ?? 'Trade declined';
+          tradeStore.updateStatus(tradeId, 'declined');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+        } else if (cmd === 'trade_cancel' && result) {
+          const tradeId = (result.trade_id as string) ?? '';
+          const message = (result.message as string) ?? 'Trade cancelled';
+          tradeStore.updateStatus(tradeId, 'cancelled');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -860,6 +898,55 @@ class WebSocketService {
           this.getFactionInfo();
           break;
         }
+        // Trade ok responses
+        if (pl.action === 'trade_offer') {
+          const raw = msg.payload as Record<string, unknown>;
+          const tradeId = (raw.trade_id as string) ?? '';
+          const message = pl.message ?? 'Trade offer sent';
+          if (tradeId) {
+            tradeStore.addOutgoing({
+              trade_id: tradeId,
+              offerer_id: '',
+              offerer_name: authStore.username,
+              target_id: (raw.target_id as string) ?? '',
+              target_name: (raw.target_name as string) ?? (raw.target as string) ?? '',
+              credits: (raw.credits as number) ?? 0,
+              items: (raw.items as TradeItems) ?? {},
+              status: 'pending',
+              created_at: Date.now(),
+            });
+          }
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+          break;
+        }
+        if (pl.action === 'trade_accept') {
+          const raw = msg.payload as Record<string, unknown>;
+          const tradeId = (raw.trade_id as string) ?? '';
+          const message = pl.message ?? 'Trade accepted!';
+          tradeStore.updateStatus(tradeId, 'completed');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+          break;
+        }
+        if (pl.action === 'trade_decline') {
+          const raw = msg.payload as Record<string, unknown>;
+          const tradeId = (raw.trade_id as string) ?? '';
+          const message = pl.message ?? 'Trade declined';
+          tradeStore.updateStatus(tradeId, 'declined');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+          break;
+        }
+        if (pl.action === 'trade_cancel') {
+          const raw = msg.payload as Record<string, unknown>;
+          const tradeId = (raw.trade_id as string) ?? '';
+          const message = pl.message ?? 'Trade cancelled';
+          tradeStore.updateStatus(tradeId, 'cancelled');
+          tradeStore.setLastResult(message);
+          eventsStore.add({ type: 'trade', message });
+          break;
+        }
         if (pl.action === 'list_ships' || ((pl as Record<string, unknown>).active_ship_id && (pl as Record<string, unknown>).ships)) {
           const raw = msg.payload as Record<string, unknown>;
           const rawShips = (raw.ships as Array<Record<string, unknown>>) ?? [];
@@ -1074,6 +1161,58 @@ class WebSocketService {
       case 'faction_invites': {
         const pl = p<{ invites: FactionInvite[] }>(msg);
         factionStore.setInvites(pl.invites ?? []);
+        break;
+      }
+
+      // ---- Trade messages ----
+
+      case 'trade_offer': {
+        // Incoming trade offer from another player
+        const raw = p<Record<string, unknown>>(msg);
+        const offer: TradeOffer = {
+          trade_id: (raw.trade_id as string) ?? '',
+          offerer_id: (raw.offerer_id as string) ?? (raw.from_id as string) ?? '',
+          offerer_name: (raw.offerer_name as string) ?? (raw.from as string) ?? (raw.from_name as string) ?? 'Unknown',
+          target_id: (raw.target_id as string) ?? (raw.to_id as string) ?? '',
+          target_name: (raw.target_name as string) ?? (raw.to as string) ?? (raw.to_name as string) ?? authStore.username,
+          credits: (raw.credits as number) ?? 0,
+          items: (raw.items as TradeItems) ?? {},
+          status: 'pending',
+          created_at: Date.now(),
+        };
+        tradeStore.addIncoming(offer);
+        eventsStore.add({ type: 'trade', message: `Trade offer from ${offer.offerer_name}: ₡${offer.credits.toLocaleString()} + ${Object.keys(offer.items).length} item(s)` });
+        break;
+      }
+
+      case 'trade_accepted':
+      case 'trade_completed': {
+        const raw = p<Record<string, unknown>>(msg);
+        const tradeId = (raw.trade_id as string) ?? '';
+        const message = (raw.message as string) ?? 'Trade completed!';
+        tradeStore.updateStatus(tradeId, 'completed');
+        tradeStore.setLastResult(message);
+        eventsStore.add({ type: 'trade', message });
+        break;
+      }
+
+      case 'trade_declined': {
+        const raw = p<Record<string, unknown>>(msg);
+        const tradeId = (raw.trade_id as string) ?? '';
+        const message = (raw.message as string) ?? 'Trade declined';
+        tradeStore.updateStatus(tradeId, 'declined');
+        tradeStore.setLastResult(message);
+        eventsStore.add({ type: 'trade', message });
+        break;
+      }
+
+      case 'trade_cancelled': {
+        const raw = p<Record<string, unknown>>(msg);
+        const tradeId = (raw.trade_id as string) ?? '';
+        const message = (raw.message as string) ?? 'Trade cancelled';
+        tradeStore.updateStatus(tradeId, 'cancelled');
+        tradeStore.setLastResult(message);
+        eventsStore.add({ type: 'trade', message });
         break;
       }
 
@@ -1396,6 +1535,26 @@ class WebSocketService {
   factionViewInfo(factionId: string) {
     factionStore.viewedFactionLoading = true;
     this.send({ type: 'faction_info', payload: { faction_id: factionId } });
+  }
+
+  // ---- Player-to-Player Trade ----
+
+  tradeOffer(targetId: string, credits: number, items: TradeItems) {
+    tradeStore.loading = true;
+    this.send({ type: 'trade_offer', payload: { target_id: targetId, credits, items } });
+  }
+
+  tradeAccept(tradeId: string) {
+    tradeStore.loading = true;
+    this.send({ type: 'trade_accept', payload: { trade_id: tradeId } });
+  }
+
+  tradeDecline(tradeId: string) {
+    this.send({ type: 'trade_decline', payload: { trade_id: tradeId } });
+  }
+
+  tradeCancel(tradeId: string) {
+    this.send({ type: 'trade_cancel', payload: { trade_id: tradeId } });
   }
 
   // ---- Chat ----

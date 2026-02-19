@@ -2,6 +2,7 @@
   import PrivateMessageSubTab from './community/PrivateMessageSubTab.svelte';
   import FactionSubTab from './community/FactionSubTab.svelte';
   import ThreadSubTab from './community/ThreadSubTab.svelte';
+  import { tradeStore } from '$lib/stores/trade.svelte';
 
   type SubTab = 'pm' | 'faction' | 'thread';
   let activeSubTab = $state<SubTab>('pm');
@@ -24,6 +25,9 @@
       >
         <span class="material-icons" style="font-size:15px">{tab.icon}</span>
         <span class="sub-tab-label">{tab.label}</span>
+        {#if tab.id === 'pm' && tradeStore.incomingCount > 0}
+          <span class="trade-count-badge">{tradeStore.incomingCount}</span>
+        {/if}
       </button>
     {/each}
   </div>
@@ -87,6 +91,21 @@
 
   .sub-tab-label {
     white-space: nowrap;
+  }
+
+  .trade-count-badge {
+    background: #ff9800;
+    color: #000;
+    font-size: 0.58rem;
+    font-weight: 700;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    line-height: 1;
   }
 
   .sub-tab-content {

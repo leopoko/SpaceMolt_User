@@ -22,5 +22,6 @@ export { scavengerStore } from './scavenger.svelte';
 export { explorerStore } from './explorer.svelte';
 export { bookmarkStore } from './bookmark.svelte';
 export { storageMemoStore } from './storageMemo.svelte';
+export { tradeStore } from './trade.svelte';
 export { uiStore, TABS } from './ui.svelte';
 export type { TabDef } from './ui.svelte';
