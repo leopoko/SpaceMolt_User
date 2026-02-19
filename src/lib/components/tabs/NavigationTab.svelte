@@ -11,10 +11,13 @@
 
   let nearbyOpen = $state(false);
 
-  // Walk the action queue to compute effective dock state and effective POI.
-  // Start from actual state, then flip for each queued Dock/Undock/Travel in order.
+  // Walk the action queue (including currently executing action) to compute
+  // effective dock state and effective POI.
   let effectivelyDocked = $derived.by(() => {
     let docked = playerStore.isDocked;
+    const cur = actionQueueStore.currentAction;
+    if (cur === 'Undock') docked = false;
+    else if (cur?.startsWith('Dock @')) docked = true;
     for (const item of actionQueueStore.items) {
       if (item.label === 'Undock') docked = false;
       else if (item.label.startsWith('Dock @')) docked = true;
@@ -22,9 +25,18 @@
     return docked;
   });
 
-  // Track where the player will effectively be after all queued travels.
+  // Track where the player will effectively be after executing action + queued travels.
   let effectivePoiId = $derived.by(() => {
     let poiId = playerStore.poi_id;
+    const cur = actionQueueStore.currentAction;
+    if (cur) {
+      for (const poi of systemStore.pois) {
+        if (cur === `Travel → ${poi.name}`) {
+          poiId = poi.id;
+          break;
+        }
+      }
+    }
     for (const item of actionQueueStore.items) {
       for (const poi of systemStore.pois) {
         if (item.label === `Travel → ${poi.name}`) {
@@ -83,8 +95,6 @@
   function refresh() {
     ws.getSystem();
   }
-
-  let mapPadding = $state(0);
 
   // Fetch system info when NavigationTab mounts
   onMount(() => {
@@ -222,16 +232,9 @@
       <!-- System Map: plain flex div so it fills remaining right-col height -->
       {#if systemStore.data && systemStore.pois.length > 0}
         <div class="map-section">
-          <div class="map-header">
-            <span class="tab-section-title" style="margin:0">System Map</span>
-            <label class="pad-control">
-              Pad
-              <input type="range" min="0" max="0.5" step="0.01" bind:value={mapPadding} />
-              <span class="mono">{mapPadding.toFixed(2)}</span>
-            </label>
-          </div>
+          <p class="tab-section-title" style="margin:0">System Map</p>
           <div class="map-wrap">
-            <SystemMap pois={systemStore.pois} padding={mapPadding} />
+            <SystemMap pois={systemStore.pois} />
           </div>
         </div>
       {/if}
@@ -296,29 +299,6 @@
     border: 1px solid rgba(79,195,247,0.18);
     border-radius: 6px;
     padding: 8px 12px 12px;
-  }
-
-  .map-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-
-  .pad-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.7rem;
-    color: #546e7a;
-    cursor: default;
-    user-select: none;
-  }
-
-  .pad-control input[type="range"] {
-    width: 72px;
-    accent-color: #4fc3f7;
-    cursor: pointer;
   }
 
   .map-wrap {

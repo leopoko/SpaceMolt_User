@@ -3,7 +3,9 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
 
-  let { pois = [], padding = 0 }: { pois: POI[]; padding?: number } = $props();
+  let { pois = [] }: { pois: POI[] } = $props();
+
+  const PADDING = 0.15;
 
   const poiColors: Record<string, string> = {
     sun: '#ffd740',
@@ -12,25 +14,11 @@
     asteroid: '#ff9800',
     nebula: '#ce93d8',
     gas_cloud: '#80cbc4',
-    ice_field: '#e0f7fa',
+    ice_field: '#b3e5fc',
     gate: '#69f0ae',
     planet: '#66bb6a',
     wreck: '#78909c',
     anomaly: '#ff5252',
-  };
-
-  const poiIcons: Record<string, string> = {
-    sun: '\u2600',       // ☀
-    station: '\u2302',   // ⌂
-    asteroid_belt: '\u25C6', // ◆
-    asteroid: '\u25C6',
-    nebula: '\u2601',    // ☁
-    gas_cloud: '\u2248', // ≈
-    ice_field: '\u2744', // ❄
-    gate: '\u2726',      // ✦
-    planet: '\u25CF',    // ●
-    wreck: '\u2620',     // ☠
-    anomaly: '\u003F',   // ?
   };
 
   // Filter to POIs that have position data
@@ -53,8 +41,8 @@
     const cy = (minY + maxY) / 2;
     const spanX = Math.max(maxX - minX, 0.5);
     const spanY = Math.max(maxY - minY, 0.5);
-    const padX = spanX * padding;
-    const padY = spanY * padding;
+    const padX = spanX * PADDING;
+    const padY = spanY * PADDING;
     const halfX = spanX / 2 + padX;
     const halfY = spanY / 2 + padY;
 
@@ -111,6 +99,19 @@
     return poi.player_count ?? poi.online ?? 0;
   }
 
+  // Dot radius per type (2x the old sizes)
+  function dotRadius(type: string, s: number): number {
+    switch (type) {
+      case 'sun': return s * 0.07;
+      case 'planet': return s * 0.045;
+      case 'station': return s * 0.036;
+      case 'nebula': return s * 0.055;
+      case 'gas_cloud': return s * 0.05;
+      case 'ice_field': return s * 0.045;
+      default: return s * 0.036;
+    }
+  }
+
   // Scale for stroke widths relative to coordinate system
   let sw = $derived(mapMetrics.scale * 0.008);
   let s = $derived(mapMetrics.scale);
@@ -120,7 +121,7 @@
   <svg {viewBox} xmlns="http://www.w3.org/2000/svg" class="system-map-svg">
     <defs>
       <filter id="glow-current" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation={s * 0.02} result="blur" />
+        <feGaussianBlur stdDeviation={s * 0.015} result="blur" />
         <feMerge>
           <feMergeNode in="blur" />
           <feMergeNode in="SourceGraphic" />
@@ -129,6 +130,28 @@
       <filter id="wave-glow" x="-200%" y="-200%" width="500%" height="500%">
         <feGaussianBlur stdDeviation={s * 0.012} />
       </filter>
+      <!-- Sun corona glow -->
+      <filter id="sun-glow" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation={s * 0.03} result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      <!-- Nebula soft glow -->
+      <filter id="nebula-glow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation={s * 0.025} />
+      </filter>
+      <!-- Radial gradient for planet -->
+      <radialGradient id="planet-grad" cx="35%" cy="35%">
+        <stop offset="0%" stop-color="#a5d6a7" />
+        <stop offset="100%" stop-color="#2e7d32" />
+      </radialGradient>
+      <!-- Ice field gradient -->
+      <radialGradient id="ice-grad" cx="40%" cy="35%">
+        <stop offset="0%" stop-color="#e1f5fe" />
+        <stop offset="100%" stop-color="#4fc3f7" />
+      </radialGradient>
     </defs>
 
     <!-- Grid lines (subtle) -->
@@ -187,7 +210,7 @@
       {@const online = getOnline(poi)}
       {@const isHere = playerStore.poi_id === poi.id}
       {@const color = poiColors[poi.type] ?? '#b0bec5'}
-      {@const dotR = poi.type === 'sun' ? s * 0.035 : s * 0.018}
+      {@const dotR = dotRadius(poi.type, s)}
 
       <!-- Wave ripples for POIs with players -->
       {#if online > 0}
@@ -221,14 +244,14 @@
         {/each}
       {/if}
 
-      <!-- Current player highlight ring -->
+      <!-- Current player highlight ring (0.8x size) -->
       {#if isHere}
         <circle
           cx={x} cy={y}
-          r={dotR + s * 0.015}
+          r={dotR + s * 0.012}
           fill="none"
           stroke="#4caf50"
-          stroke-width={sw * 1.2}
+          stroke-width={sw * 0.96}
           filter="url(#glow-current)"
         >
           <animate
@@ -240,18 +263,96 @@
         </circle>
       {/if}
 
-      <!-- POI dot -->
+      <!-- POI visuals by type -->
       {#if poi.type === 'sun'}
-        <circle cx={x} cy={y} r={dotR} fill={color} opacity="0.9">
-          <animate
-            attributeName="opacity"
-            values="0.9;0.7;0.9"
-            dur="4s"
-            repeatCount="indefinite"
-          />
+        <!-- Sun: glowing corona + bright core -->
+        <circle cx={x} cy={y} r={dotR * 1.4} fill="#ffd740" opacity="0.15" filter="url(#sun-glow)" />
+        <circle cx={x} cy={y} r={dotR} fill="#ffd740" opacity="0.9" filter="url(#sun-glow)">
+          <animate attributeName="opacity" values="0.9;0.7;0.9" dur="4s" repeatCount="indefinite" />
         </circle>
-        <circle cx={x} cy={y} r={dotR * 0.6} fill="#fff8e1" opacity="0.6" />
+        <circle cx={x} cy={y} r={dotR * 0.55} fill="#fff8e1" opacity="0.7" />
+
+      {:else if poi.type === 'station'}
+        <!-- Station: diamond shape -->
+        <polygon
+          points="{x},{y - dotR} {x + dotR},{y} {x},{y + dotR} {x - dotR},{y}"
+          fill={isHere ? '#4caf50' : '#4fc3f7'}
+          opacity="0.9"
+          stroke={isHere ? '#81c784' : '#b3e5fc'}
+          stroke-width={sw * 0.4}
+        />
+        <!-- Small inner diamond -->
+        {@const ir = dotR * 0.4}
+        <polygon
+          points="{x},{y - ir} {x + ir},{y} {x},{y + ir} {x - ir},{y}"
+          fill="none"
+          stroke={isHere ? '#c8e6c9' : '#e1f5fe'}
+          stroke-width={sw * 0.25}
+          opacity="0.6"
+        />
+
+      {:else if poi.type === 'planet'}
+        <!-- Planet: sphere with gradient + atmosphere ring -->
+        <circle cx={x} cy={y} r={dotR * 1.12} fill="none"
+          stroke="rgba(102,187,106,0.2)" stroke-width={sw * 0.6} />
+        <circle cx={x} cy={y} r={dotR}
+          fill={isHere ? '#4caf50' : 'url(#planet-grad)'}
+          opacity="0.9"
+          stroke={isHere ? '#81c784' : 'rgba(255,255,255,0.15)'}
+          stroke-width={sw * 0.3}
+        />
+        <!-- Highlight crescent -->
+        <ellipse cx={x - dotR * 0.2} cy={y - dotR * 0.15} rx={dotR * 0.5} ry={dotR * 0.7}
+          fill="rgba(255,255,255,0.1)" />
+
+      {:else if poi.type === 'nebula'}
+        <!-- Nebula: soft layered blobs -->
+        <circle cx={x + dotR * 0.2} cy={y - dotR * 0.15} r={dotR * 0.8}
+          fill="#ce93d8" opacity="0.15" filter="url(#nebula-glow)" />
+        <circle cx={x - dotR * 0.2} cy={y + dotR * 0.1} r={dotR * 0.9}
+          fill="#ab47bc" opacity="0.15" filter="url(#nebula-glow)" />
+        <circle cx={x} cy={y} r={dotR * 0.6}
+          fill={isHere ? '#4caf50' : '#ce93d8'} opacity="0.7" />
+        <circle cx={x + dotR * 0.15} cy={y - dotR * 0.1} r={dotR * 0.3}
+          fill="#f3e5f5" opacity="0.3" />
+
+      {:else if poi.type === 'gas_cloud'}
+        <!-- Gas cloud: semi-transparent wispy layers -->
+        <ellipse cx={x - dotR * 0.15} cy={y} rx={dotR * 1.1} ry={dotR * 0.7}
+          fill="#80cbc4" opacity="0.12" filter="url(#nebula-glow)" />
+        <ellipse cx={x + dotR * 0.1} cy={y + dotR * 0.05} rx={dotR * 0.8} ry={dotR * 0.55}
+          fill="#4db6ac" opacity="0.2" />
+        <ellipse cx={x} cy={y} rx={dotR * 0.5} ry={dotR * 0.35}
+          fill={isHere ? '#4caf50' : '#b2dfdb'} opacity="0.6" />
+
+      {:else if poi.type === 'ice_field'}
+        <!-- Ice field: crystalline cluster -->
+        <circle cx={x} cy={y} r={dotR * 0.9}
+          fill={isHere ? '#4caf50' : 'url(#ice-grad)'} opacity="0.8"
+          stroke="#b3e5fc" stroke-width={sw * 0.3} />
+        <!-- Crystal facets -->
+        {@const cr = dotR * 0.5}
+        <line x1={x - cr} y1={y - cr * 0.3} x2={x + cr} y2={y + cr * 0.3}
+          stroke="#e1f5fe" stroke-width={sw * 0.25} opacity="0.5" />
+        <line x1={x - cr * 0.3} y1={y - cr} x2={x + cr * 0.3} y2={y + cr}
+          stroke="#e1f5fe" stroke-width={sw * 0.25} opacity="0.4" />
+
+      {:else if poi.type === 'asteroid_belt' || poi.type === 'asteroid'}
+        <!-- Asteroid belt: scattered small rocks -->
+        {@const ar = dotR * 0.3}
+        <circle cx={x - ar * 1.2} cy={y - ar * 0.5} r={ar * 0.8}
+          fill={isHere ? '#4caf50' : '#ff9800'} opacity="0.8" />
+        <circle cx={x + ar * 0.8} cy={y - ar * 0.8} r={ar * 0.6}
+          fill={isHere ? '#66bb6a' : '#ffb74d'} opacity="0.7" />
+        <circle cx={x + ar * 1.5} cy={y + ar * 0.3} r={ar * 0.7}
+          fill={isHere ? '#4caf50' : '#e65100'} opacity="0.8" />
+        <circle cx={x - ar * 0.5} cy={y + ar * 1.0} r={ar * 0.5}
+          fill={isHere ? '#81c784' : '#ff9800'} opacity="0.6" />
+        <circle cx={x + ar * 0.2} cy={y + ar * 0.2} r={ar * 0.9}
+          fill={isHere ? '#4caf50' : '#bf360c'} opacity="0.7" />
+
       {:else}
+        <!-- Default: simple circle -->
         <circle
           cx={x} cy={y} r={dotR}
           fill={isHere ? '#4caf50' : color}
@@ -260,16 +361,6 @@
           stroke-width={sw * 0.4}
         />
       {/if}
-
-      <!-- POI icon text -->
-      <text
-        x={x} y={y}
-        text-anchor="middle"
-        dominant-baseline="central"
-        fill={poi.type === 'sun' ? '#5d4037' : '#fff'}
-        font-size={dotR * 1.0}
-        style="pointer-events:none"
-      >{poiIcons[poi.type] ?? '\u25CF'}</text>
 
       <!-- POI label -->
       <text
