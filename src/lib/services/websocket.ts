@@ -116,14 +116,58 @@ class WebSocketService {
   // ---- Message dispatch ----
 
   private onMessage(event: MessageEvent) {
-    let msg: WsMessage;
+    const raw = event.data as string;
+
+    // Try single JSON parse first (common case)
     try {
-      msg = JSON.parse(event.data as string);
+      const msg: WsMessage = JSON.parse(raw);
+      this.dispatch(msg);
+      return;
     } catch {
-      console.error('Invalid WS message:', event.data);
+      // May be multiple JSON objects concatenated in one frame
+    }
+
+    // Split by newlines and try each line
+    const lines = raw.split('\n').filter(l => l.trim());
+    if (lines.length > 1) {
+      for (const line of lines) {
+        try {
+          const msg: WsMessage = JSON.parse(line);
+          this.dispatch(msg);
+        } catch {
+          console.error('Invalid WS message line:', line.slice(0, 200));
+        }
+      }
       return;
     }
-    this.dispatch(msg);
+
+    // Try to split concatenated JSON objects: }{ boundary
+    const parts: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i] === '{') depth++;
+      else if (raw[i] === '}') {
+        depth--;
+        if (depth === 0) {
+          parts.push(raw.slice(start, i + 1));
+          start = i + 1;
+        }
+      }
+    }
+
+    if (parts.length > 1) {
+      for (const part of parts) {
+        try {
+          const msg: WsMessage = JSON.parse(part);
+          this.dispatch(msg);
+        } catch {
+          console.error('Invalid WS message part:', part.slice(0, 200));
+        }
+      }
+    } else {
+      console.error('Invalid WS message:', raw.slice(0, 500));
+    }
   }
 
   private dispatch(msg: WsMessage) {
