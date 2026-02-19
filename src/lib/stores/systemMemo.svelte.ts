@@ -34,6 +34,7 @@ export interface MemoPOI {
   id: string;
   name: string;
   type: string;
+  position?: { x: number; y: number };
 }
 
 export interface MemoConnection {
@@ -103,6 +104,7 @@ class SystemMemoStore {
         id: p.id,
         name: p.name,
         type: p.type,
+        ...(p.position ? { position: { x: p.position.x, y: p.position.y } } : {}),
       })),
       connections: (systemData.connections ?? []).map(c => ({
         system_id: c.system_id,

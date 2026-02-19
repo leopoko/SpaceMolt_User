@@ -2,6 +2,7 @@
   import Card, { Content } from '@smui/card';
   import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
   import type { SystemMemo } from '$lib/stores/systemMemo.svelte';
+  import SystemMap from '$lib/components/SystemMap.svelte';
 
   let selectedSystemId = $state<string | null>(null);
 
@@ -34,6 +35,21 @@
       selectedSystemId = systemId;
     }
   }
+
+  // Convert memo POIs to SystemMap-compatible format
+  let mapPois = $derived.by(() => {
+    if (!selectedMemo) return [];
+    return selectedMemo.pois
+      .filter(p => p.position)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        base: null,
+        player_count: 0,
+        position: p.position,
+      }));
+  });
 
   // Mining stats for the selected memo
   let miningStatsEntries = $derived.by(() => {
@@ -123,6 +139,16 @@
               {/if}
             </Content>
           </Card>
+
+          <!-- System Map -->
+          {#if mapPois.length > 0}
+            <div class="map-section">
+              <p class="tab-section-title" style="margin:0">System Map</p>
+              <div class="map-wrap">
+                <SystemMap pois={mapPois} />
+              </div>
+            </div>
+          {/if}
 
           <!-- Connections -->
           <Card class="space-card">
@@ -419,6 +445,21 @@
     transition: all 0.15s;
   }
   .nav-btn:hover { background: rgba(79,195,247,0.1); }
+
+  .map-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--space-surface, #0d1525);
+    border: 1px solid rgba(79,195,247,0.18);
+    border-radius: 6px;
+    padding: 8px 12px 12px;
+  }
+
+  .map-wrap {
+    min-height: 200px;
+    height: 250px;
+  }
 
   .mono { font-family: 'Roboto Mono', monospace; }
 

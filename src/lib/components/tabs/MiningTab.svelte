@@ -76,12 +76,11 @@
   let currentSystemId = $derived(playerStore.system_id);
   let currentPoiId = $derived(playerStore.poi_id);
 
-  // Current POI stats (primary display)
-  let currentPoiStats = $derived.by(() => {
-    if (!currentSystemId || !currentPoiId) return null;
-    const stats = systemMemoStore.getMiningStats(currentSystemId, currentPoiId);
+  /** Get mining stats for a specific asteroid POI, formatted for display */
+  function getAsteroidStats(poiId: string) {
+    if (!currentSystemId) return null;
+    const stats = systemMemoStore.getMiningStats(currentSystemId, poiId);
     if (!stats || stats.totalMined === 0) return null;
-    const poiName = systemStore.pois.find(p => p.id === currentPoiId)?.name ?? currentPoiId;
     const items = Object.entries(stats.items)
       .map(([name, count]) => ({
         name,
@@ -89,34 +88,8 @@
         pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
       }))
       .sort((a, b) => b.count - a.count);
-    return { poiId: currentPoiId, poiName, items, total: stats.totalMined };
-  });
-
-  // All system POI stats (secondary, collapsible)
-  let systemMiningStats = $derived(
-    currentSystemId ? systemMemoStore.getSystemMiningStats(currentSystemId) : {}
-  );
-
-  let otherPoiStats = $derived.by(() => {
-    const entries = Object.entries(systemMiningStats);
-    if (entries.length === 0) return [];
-    return entries
-      .filter(([poiId]) => poiId !== currentPoiId)
-      .map(([poiId, stats]) => {
-        const poiName = systemStore.pois.find(p => p.id === poiId)?.name ?? poiId;
-        const items = Object.entries(stats.items)
-          .map(([name, count]) => ({
-            name,
-            count,
-            pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
-          }))
-          .sort((a, b) => b.count - a.count);
-        return { poiId, poiName, items, total: stats.totalMined };
-      })
-      .sort((a, b) => b.total - a.total);
-  });
-
-  let showOtherPois = $state(false);
+    return { items, total: stats.totalMined };
+  }
 
   function clearMiningStats(poiId?: string) {
     if (currentSystemId) {
@@ -134,6 +107,7 @@
       {#if systemStore.asteroids.length > 0}
         <div class="asteroid-list">
           {#each systemStore.asteroids as ast}
+            {@const astStats = getAsteroidStats(ast.id)}
             <div
               class="asteroid-item"
               class:selected={selectedAsteroid === ast.id}
@@ -142,11 +116,35 @@
               tabindex="0"
               onkeydown={(e) => e.key === 'Enter' && (selectedAsteroid = ast.id)}
             >
-              <span class="material-icons ast-icon">lens</span>
-              <div class="ast-info">
-                <span class="ast-name">{ast.name}</span>
-                <span class="ast-type mono">{ast.type}</span>
+              <div class="ast-main-row">
+                <span class="material-icons ast-icon">lens</span>
+                <div class="ast-info">
+                  <span class="ast-name">{ast.name}</span>
+                  <span class="ast-type mono">{ast.type}</span>
+                </div>
+                {#if astStats}
+                  <span class="ast-total mono">{astStats.total} mined</span>
+                {/if}
               </div>
+              {#if astStats}
+                <div class="ast-stats" onclick={(e) => e.stopPropagation()}>
+                  <div class="stats-items">
+                    {#each astStats.items as item}
+                      <div class="stats-item-row">
+                        <div class="stats-item-bar-bg">
+                          <div class="stats-item-bar" style="width:{item.pct}%"></div>
+                        </div>
+                        <span class="stats-item-name">{item.name}</span>
+                        <span class="stats-item-count mono">{item.count}</span>
+                        <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
+                      </div>
+                    {/each}
+                  </div>
+                  <button class="stats-clear-inline" onclick={(e) => { e.stopPropagation(); clearMiningStats(ast.id); }} title="Clear stats">
+                    <span class="material-icons" style="font-size:11px">delete</span>
+                  </button>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -177,69 +175,6 @@
         </Button>
       </div>
 
-      <!-- Current POI Mining Statistics -->
-      {#if currentPoiStats}
-        <div class="mining-stats-section">
-          <div class="stats-head">
-            <p class="tab-section-title" style="margin:0">This POI — {currentPoiStats.poiName}</p>
-            <button class="stats-clear-btn" onclick={() => clearMiningStats(currentPoiStats!.poiId)} title="Clear stats for this POI">
-              <span class="material-icons" style="font-size:12px">delete</span> Clear
-            </button>
-          </div>
-          <div class="stats-poi">
-            <div class="stats-poi-head">
-              <span class="stats-poi-total mono">{currentPoiStats.total} total mined</span>
-            </div>
-            <div class="stats-items">
-              {#each currentPoiStats.items as item}
-                <div class="stats-item-row">
-                  <div class="stats-item-bar-bg">
-                    <div class="stats-item-bar" style="width:{item.pct}%"></div>
-                  </div>
-                  <span class="stats-item-name">{item.name}</span>
-                  <span class="stats-item-count mono">{item.count}</span>
-                  <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
-                </div>
-              {/each}
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Other POI Mining Statistics (collapsible) -->
-      {#if otherPoiStats.length > 0}
-        <div class="mining-stats-section other-pois-section">
-          <div class="other-pois-toggle" role="button" tabindex="0" onclick={() => showOtherPois = !showOtherPois} onkeydown={(e) => e.key === 'Enter' && (showOtherPois = !showOtherPois)}>
-            <span class="material-icons toggle-arrow" class:toggle-open={showOtherPois}>expand_more</span>
-            <span class="tab-section-title" style="margin:0">Other POIs ({otherPoiStats.length})</span>
-            <button class="stats-clear-btn" onclick={(e) => { e.stopPropagation(); clearMiningStats(); }} title="Clear all stats">
-              <span class="material-icons" style="font-size:12px">delete</span> Clear All
-            </button>
-          </div>
-          {#if showOtherPois}
-            {#each otherPoiStats as poi}
-              <div class="stats-poi">
-                <div class="stats-poi-head">
-                  <span class="stats-poi-name">{poi.poiName}</span>
-                  <span class="stats-poi-total mono">{poi.total} total</span>
-                </div>
-                <div class="stats-items">
-                  {#each poi.items as item}
-                    <div class="stats-item-row">
-                      <div class="stats-item-bar-bg">
-                        <div class="stats-item-bar" style="width:{item.pct}%"></div>
-                      </div>
-                      <span class="stats-item-name">{item.name}</span>
-                      <span class="stats-item-count mono">{item.count}</span>
-                      <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
     </Content>
   </Card>
 
@@ -349,8 +284,8 @@
 
   .asteroid-item {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 4px;
     padding: 8px;
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.05);
@@ -362,10 +297,35 @@
   .asteroid-item:hover { background: rgba(255,255,255,0.06); }
   .asteroid-item.selected { border-color: rgba(255,152,0,0.5); background: rgba(255,152,0,0.08); }
 
+  .ast-main-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .ast-icon { font-size: 16px; color: #78909c; }
-  .ast-info { display: flex; flex-direction: column; }
+  .ast-info { display: flex; flex-direction: column; flex: 1; }
   .ast-name { font-size: 0.8rem; color: #b0bec5; }
   .ast-type { font-size: 0.68rem; color: #546e7a; }
+  .ast-total { font-size: 0.62rem; color: #ff9800; flex-shrink: 0; }
+
+  .ast-stats {
+    position: relative;
+    padding: 4px 0 0 24px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .stats-clear-inline {
+    position: absolute;
+    top: 4px;
+    right: 0;
+    background: none;
+    border: none;
+    color: #546e7a;
+    cursor: pointer;
+    padding: 1px;
+  }
+  .stats-clear-inline:hover { color: #f44336; }
 
   .mining-actions {
     display: flex;
@@ -456,57 +416,7 @@
   .buy-price { color: #66bb6a; }
   .sell-price { color: #ff9800; }
 
-  /* ---- Mining Statistics ---- */
-
-  .mining-stats-section {
-    margin-top: 16px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    padding-top: 12px;
-  }
-
-  .stats-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-  }
-
-  .stats-clear-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    background: none;
-    border: 1px solid rgba(244,67,54,0.2);
-    color: #ef5350;
-    font-size: 0.6rem;
-    font-family: inherit;
-    padding: 2px 6px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .stats-clear-btn:hover { background: rgba(244,67,54,0.1); }
-
-  .stats-poi {
-    margin-bottom: 10px;
-  }
-
-  .stats-poi-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-  }
-
-  .stats-poi-name {
-    font-size: 0.75rem;
-    color: #90caf9;
-  }
-
-  .stats-poi-total {
-    font-size: 0.65rem;
-    color: #546e7a;
-  }
+  /* ---- Mining Statistics (inline per-asteroid) ---- */
 
   .stats-items {
     display: flex;
@@ -565,32 +475,4 @@
     z-index: 1;
   }
 
-  .other-pois-section {
-    border-top: none;
-    padding-top: 0;
-    margin-top: 8px;
-  }
-
-  .other-pois-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px 0;
-    width: 100%;
-    text-align: left;
-    color: inherit;
-    font-family: inherit;
-  }
-  .other-pois-toggle:hover { opacity: 0.8; }
-
-  .toggle-arrow {
-    font-size: 18px;
-    color: #546e7a;
-    transition: transform 0.2s ease;
-    transform: rotate(-90deg);
-  }
-  .toggle-open { transform: rotate(0deg); }
 </style>
