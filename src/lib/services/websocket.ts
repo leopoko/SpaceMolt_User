@@ -3,7 +3,8 @@ import type {
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
   CatalogType, CatalogResponse,
-  BaseInfo, BaseCondition
+  BaseInfo, BaseCondition,
+  ForumThread, ForumReply, ForumCategory
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -20,6 +21,7 @@ import { eventsStore } from '$lib/stores/events.svelte';
 import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
 import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
+import { forumStore } from '$lib/stores/forum.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -538,7 +540,7 @@ class WebSocketService {
       }
 
       case 'ok': {
-        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[] }>(msg);
+        const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string }>(msg);
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives
@@ -547,6 +549,56 @@ class WebSocketService {
         }
         if (pl.action === 'view_orders' && pl.orders) {
           marketStore.setMyOrders(pl.orders);
+          break;
+        }
+        // Forum responses
+        if (pl.action === 'forum_list' && pl.threads) {
+          forumStore.setThreadList({
+            threads: pl.threads,
+            page: pl.page ?? 1,
+            total: pl.total ?? 0,
+            per_page: pl.per_page ?? 20,
+            categories: pl.categories,
+          });
+          break;
+        }
+        if (pl.action === 'forum_get_thread' && pl.thread) {
+          forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
+          break;
+        }
+        if (pl.action === 'forum_create_thread' && pl.thread_id) {
+          forumStore.addMyThread({
+            id: pl.thread_id,
+            title: pl.title ?? '',
+            category: 'general',
+            created_at: new Date().toISOString(),
+          });
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Thread created' });
+          // Refresh thread list
+          this.forumList(forumStore.page);
+          break;
+        }
+        if (pl.action === 'forum_reply' && pl.reply_id) {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Reply posted' });
+          // Refresh current thread
+          if (pl.thread_id) this.forumGetThread(pl.thread_id);
+          break;
+        }
+        if (pl.action === 'forum_delete_thread' && pl.thread_id) {
+          forumStore.removeMyThread(pl.thread_id);
+          forumStore.clearCurrentThread();
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Thread deleted' });
+          this.forumList(forumStore.page);
+          break;
+        }
+        if (pl.action === 'forum_delete_reply') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Reply deleted' });
+          if (forumStore.currentThread) this.forumGetThread(forumStore.currentThread.id);
+          break;
+        }
+        if (pl.action === 'forum_upvote') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Upvoted' });
+          if (forumStore.currentThread) this.forumGetThread(forumStore.currentThread.id);
           break;
         }
         if (pl.action === 'get_system' && pl.system) {
@@ -634,6 +686,18 @@ class WebSocketService {
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
         }
+        break;
+      }
+
+      case 'forum_list': {
+        const pl = p<{ threads: ForumThread[]; page: number; total: number; per_page: number; categories?: string[] }>(msg);
+        forumStore.setThreadList(pl);
+        break;
+      }
+
+      case 'forum_thread': {
+        const pl = p<{ thread: ForumThread; replies: ForumReply[] }>(msg);
+        forumStore.setThreadDetail(pl.thread, pl.replies ?? []);
         break;
       }
 
@@ -794,6 +858,66 @@ class WebSocketService {
   catalog(type: CatalogType, opts?: { id?: string; category?: string; search?: string; page?: number; page_size?: number }) {
     catalogStore.setLoading(type, true);
     this.send({ type: 'catalog', payload: { type, ...opts } });
+  }
+
+  // ---- Forum ----
+
+  forumList(page = 1) {
+    forumStore.loading = true;
+    this.send({ type: 'forum_list', payload: { page } });
+  }
+
+  forumGetThread(threadId: string) {
+    forumStore.loadingThread = true;
+    this.send({ type: 'forum_get_thread', payload: { thread_id: threadId } });
+  }
+
+  forumCreateThread(title: string, content: string, category: ForumCategory = 'general') {
+    this.send({ type: 'forum_create_thread', payload: { title, content, category } });
+  }
+
+  forumReply(threadId: string, content: string) {
+    this.send({ type: 'forum_reply', payload: { thread_id: threadId, content } });
+  }
+
+  forumDeleteThread(threadId: string) {
+    this.send({ type: 'forum_delete_thread', payload: { thread_id: threadId } });
+  }
+
+  forumDeleteReply(replyId: string) {
+    this.send({ type: 'forum_delete_reply', payload: { reply_id: replyId } });
+  }
+
+  forumUpvote(threadId: string, replyId?: string) {
+    const payload: Record<string, string> = { thread_id: threadId };
+    if (replyId) payload.reply_id = replyId;
+    this.send({ type: 'forum_upvote', payload });
+  }
+
+  // ---- Faction (extended) ----
+
+  factionList(limit = 20, offset = 0) {
+    this.send({ type: 'faction_list', payload: { limit, offset } });
+  }
+
+  createFaction(name: string, tag: string) {
+    this.send({ type: 'create_faction', payload: { name, tag } });
+  }
+
+  joinFaction(factionId: string) {
+    this.send({ type: 'join_faction', payload: { faction_id: factionId } });
+  }
+
+  leaveFaction() {
+    this.send({ type: 'leave_faction' });
+  }
+
+  factionGetInvites() {
+    this.send({ type: 'faction_get_invites' });
+  }
+
+  factionDeclineInvite(factionId: string) {
+    this.send({ type: 'faction_decline_invite', payload: { faction_id: factionId } });
   }
 
   // ---- Chat ----

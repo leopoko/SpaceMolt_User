@@ -607,6 +607,46 @@ export interface CatalogResponse {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CatalogEntry = Record<string, any>;
 
+// ---- Forum / Thread ----
+
+export interface ForumThread {
+  id: string;
+  title: string;
+  content: string;
+  author_id: string;
+  author_name: string;
+  category: ForumCategory;
+  upvotes: number;
+  reply_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForumReply {
+  id: string;
+  thread_id: string;
+  content: string;
+  author_id: string;
+  author_name: string;
+  upvotes: number;
+  created_at: string;
+}
+
+export interface ForumListResponse {
+  threads: ForumThread[];
+  page: number;
+  total: number;
+  per_page: number;
+  categories: string[];
+}
+
+export interface ForumThreadDetail {
+  thread: ForumThread;
+  replies: ForumReply[];
+}
+
+export type ForumCategory = 'general' | 'bugs' | 'suggestions' | 'trading' | 'factions';
+
 // ---- Game State (full snapshot) ----
 
 export interface GameState {

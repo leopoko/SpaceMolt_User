@@ -17,7 +17,7 @@ export const TABS: TabDef[] = [
   { label: 'Trading',    icon: 'storefront' },
   { label: 'Ship',       icon: 'rocket' },
   { label: 'Crafting',   icon: 'precision_manufacturing' },
-  { label: 'Faction',    icon: 'groups' },
+  { label: 'Community',  icon: 'groups' },
   { label: 'Base',       icon: 'home' },
   { label: 'Info',       icon: 'person' },
   { label: 'Settings',   icon: 'settings' }
