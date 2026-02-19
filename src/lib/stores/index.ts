@@ -17,5 +17,6 @@ export { mapSettingsStore } from './mapSettings.svelte';
 export { forumStore } from './forum.svelte';
 export { missionStore } from './mission.svelte';
 export { loopStore } from './loop.svelte';
+export { scavengerStore } from './scavenger.svelte';
 export { uiStore, TABS } from './ui.svelte';
 export type { TabDef } from './ui.svelte';

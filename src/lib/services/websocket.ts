@@ -23,6 +23,7 @@ import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
 import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
+import { scavengerStore } from '$lib/stores/scavenger.svelte';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -331,6 +332,21 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
           this.viewStorage();
+        } else if (cmd === 'loot_wreck') {
+          const message = (result?.message as string) ?? 'Loot collected';
+          eventsStore.add({ type: 'info', message });
+          // Refresh wreck list after looting
+          this.getWrecks();
+        } else if (cmd === 'salvage_wreck') {
+          const message = (result?.message as string) ?? 'Wreck salvaged';
+          eventsStore.add({ type: 'info', message });
+          this.getWrecks();
+        } else if (cmd === 'scrap_wreck') {
+          const message = (result?.message as string) ?? 'Wreck scrapped';
+          eventsStore.add({ type: 'info', message });
+        } else if (cmd === 'self_destruct') {
+          const message = (result?.message as string) ?? 'Ship self-destructed';
+          eventsStore.add({ type: 'combat', message });
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -634,6 +650,21 @@ class WebSocketService {
         }
         if (pl.action === 'decline_mission') {
           eventsStore.add({ type: 'info', message: pl.message ?? 'Mission declined' });
+          break;
+        }
+        // Scavenger: get_wrecks response
+        if (pl.action === 'get_wrecks' || (!pl.action && Array.isArray((msg.payload as Record<string, unknown>).wrecks) && !pl.command)) {
+          const raw = msg.payload as Record<string, unknown>;
+          const wrecks = (raw.wrecks as Array<Record<string, unknown>>) ?? [];
+          const normalized = wrecks.map(w => ({
+            id: (w.wreck_id as string) ?? (w.id as string) ?? '',
+            ship_type: (w.ship_type as string) ?? (w.ship_class as string) ?? 'Unknown',
+            loot: (w.loot as Array<{ item_id: string; quantity: number; name?: string }>) ?? (w.items as Array<{ item_id: string; quantity: number; name?: string }>) ?? [],
+            expires_at: (w.expires_at as number) ?? 0,
+            owner: (w.owner as string) ?? (w.owner_name as string) ?? undefined,
+            wreck_type: (w.wreck_type as string) ?? (w.type as string) ?? undefined,
+          }));
+          scavengerStore.setWrecks(normalized as never);
           break;
         }
         if (pl.action === 'view_market' && pl.items) {
@@ -993,6 +1024,26 @@ class WebSocketService {
     } else {
       this.send({ type: 'scan' });
     }
+  }
+
+  // ---- Scavenger ----
+
+  getWrecks() { this.send({ type: 'get_wrecks' }); }
+
+  lootWreck(wreckId: string, itemId: string, quantity: number) {
+    this.send({ type: 'loot_wreck', payload: { wreck_id: wreckId, item_id: itemId, quantity } });
+  }
+
+  salvageWreck(wreckId: string) {
+    this.send({ type: 'salvage_wreck', payload: { wreck_id: wreckId } });
+  }
+
+  scrapWreck() {
+    this.send({ type: 'scrap_wreck' });
+  }
+
+  selfDestruct() {
+    this.send({ type: 'self_destruct' });
   }
 
   // ---- Mining ----
