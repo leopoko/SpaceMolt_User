@@ -31,7 +31,7 @@
     actionQueueStore.enqueue(
       `Loot ${qty}x ${itemName || itemId}`,
       () => ws.lootWreck(wreckId, itemId, qty),
-      { command: { type: 'loot_wreck', params: { wreckId, itemId, quantity: qty } } }
+      { command: { type: 'loot_wreck', params: { wreck_id: wreckId, item_id: itemId, quantity: qty } } }
     );
   }
 
@@ -40,21 +40,38 @@
       actionQueueStore.enqueue(
         `Loot ${item.quantity}x ${item.name || item.item_id}`,
         () => ws.lootWreck(wreckId, item.item_id, item.quantity),
-        { command: { type: 'loot_wreck', params: { wreckId, itemId: item.item_id, quantity: item.quantity } } }
+        { command: { type: 'loot_wreck', params: { wreck_id: wreckId, item_id: item.item_id, quantity: item.quantity } } }
       );
     }
   }
 
-  // ---- Salvage ----
-  function salvageWreck(wreckId: string, shipType: string) {
+  // ---- Tow ----
+  function towWreck(wreckId: string, shipType: string) {
     actionQueueStore.enqueue(
-      `Salvage ${shipType}`,
-      () => ws.salvageWreck(wreckId),
-      { command: { type: 'salvage_wreck', params: { wreckId } } }
+      `Tow ${shipType}`,
+      () => ws.towWreck(wreckId),
+      { command: { type: 'tow_wreck', params: { wreck_id: wreckId } } }
     );
   }
 
-  // ---- Scrap ----
+  function releaseTow() {
+    actionQueueStore.enqueue(
+      'Release tow',
+      () => ws.releaseTow(),
+      { command: { type: 'release_tow', params: {} } }
+    );
+  }
+
+  // ---- Sell Wreck (docked at salvage yard) ----
+  function sellWreck() {
+    actionQueueStore.enqueue(
+      'Sell wreck',
+      () => ws.sellWreck(),
+      { command: { type: 'sell_wreck', params: {} } }
+    );
+  }
+
+  // ---- Scrap Wreck (docked at salvage yard, skill 2+) ----
   function scrapWreck() {
     actionQueueStore.enqueue(
       'Scrap wreck',
@@ -102,7 +119,7 @@
 </script>
 
 <div class="two-col">
-  <!-- Left: Wreck List -->
+  <!-- Left: Wreck List + Tow Status -->
   <Card class="space-card">
     <Content>
       <div class="section-header">
@@ -112,6 +129,17 @@
           SCAN
         </button>
       </div>
+
+      <!-- Tow status banner -->
+      {#if scavengerStore.isTowing}
+        <div class="tow-status-banner">
+          <span class="material-icons" style="font-size:14px">link</span>
+          <span>Towing wreck</span>
+          <button class="release-tow-mini-btn" onclick={releaseTow}>
+            RELEASE
+          </button>
+        </div>
+      {/if}
 
       {#if scavengerStore.wrecks.length > 0}
         <div class="wreck-list">
@@ -138,12 +166,13 @@
               </div>
               <div class="wreck-actions-mini">
                 <button
-                  class="action-btn salvage-btn"
-                  onclick={(e) => { e.stopPropagation(); salvageWreck(wreck.id, wreck.ship_type); }}
-                  title="Salvage wreck"
+                  class="action-btn tow-btn"
+                  onclick={(e) => { e.stopPropagation(); towWreck(wreck.id, wreck.ship_type); }}
+                  title="Tow wreck (requires tow rig)"
+                  disabled={scavengerStore.isTowing}
                 >
-                  <span class="material-icons">recycling</span>
-                  SALVAGE
+                  <span class="material-icons">link</span>
+                  TOW
                 </button>
               </div>
             </div>
@@ -155,15 +184,24 @@
         </p>
       {/if}
 
-      <!-- Scrap Wreck (docked only) -->
+      <!-- Salvage Yard operations (docked only) -->
       {#if playerStore.isDocked}
-        <div class="scrap-section">
+        <div class="salvage-yard-section">
           <p class="tab-section-title" style="margin-top: 12px">Salvage Yard</p>
-          <button class="action-btn-lg scrap-btn" onclick={scrapWreck}>
-            <span class="material-icons">construction</span>
-            Scrap Wreck
-          </button>
-          <p class="hint-text">Requires salvaging skill Lv.2+</p>
+          <div class="yard-actions">
+            <button class="action-btn-lg sell-wreck-btn" onclick={sellWreck}>
+              <span class="material-icons">paid</span>
+              Sell Wreck
+            </button>
+            <button class="action-btn-lg scrap-btn" onclick={scrapWreck}>
+              <span class="material-icons">construction</span>
+              Scrap Wreck
+            </button>
+          </div>
+          <p class="hint-text">Sell: pays salvage + cargo value. Scrap: yields materials (skill Lv.2+).</p>
+          {#if scavengerStore.isTowing}
+            <p class="hint-text tow-ready">Towed wreck ready to process.</p>
+          {/if}
         </div>
       {/if}
     </Content>
@@ -241,16 +279,17 @@
 
           <div class="section-divider"></div>
 
-          <!-- Salvage this wreck -->
+          <!-- Tow this wreck -->
           <div class="wreck-action-row">
             <button
-              class="action-btn-lg salvage-lg-btn"
-              onclick={() => salvageWreck(selectedWreck!.id, selectedWreck!.ship_type)}
+              class="action-btn-lg tow-lg-btn"
+              onclick={() => towWreck(selectedWreck!.id, selectedWreck!.ship_type)}
+              disabled={scavengerStore.isTowing}
             >
-              <span class="material-icons">recycling</span>
-              Salvage Wreck
+              <span class="material-icons">link</span>
+              Tow Wreck
             </button>
-            <p class="hint-text">Destroys wreck. Yields metal scrap &amp; components.</p>
+            <p class="hint-text">Attach wreck to tow rig. Travel to salvage yard to sell or scrap.</p>
           </div>
         </div>
       {:else}
@@ -261,6 +300,23 @@
       {/if}
 
       <div class="section-divider"></div>
+
+      <!-- Tow Controls (when towing) -->
+      {#if scavengerStore.isTowing}
+        <div class="tow-section">
+          <p class="tab-section-title tow-title">
+            <span class="material-icons" style="font-size:16px">link</span>
+            Towing Wreck
+          </p>
+          <button class="action-btn-lg release-btn" onclick={releaseTow}>
+            <span class="material-icons">link_off</span>
+            Release Tow
+          </button>
+          <p class="hint-text">Drops the wreck at your current location.</p>
+        </div>
+
+        <div class="section-divider"></div>
+      {/if}
 
       <!-- Self Destruct -->
       <div class="self-destruct-section">
@@ -364,6 +420,37 @@
 
   .spinning { animation: spin 1s linear infinite; }
 
+  /* ---- Tow status banner ---- */
+  .tow-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    margin-bottom: 8px;
+    background: rgba(255, 152, 0, 0.08);
+    border: 1px solid rgba(255, 152, 0, 0.3);
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-family: 'Roboto Mono', monospace;
+    color: #ff9800;
+  }
+
+  .release-tow-mini-btn {
+    margin-left: auto;
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid rgba(255, 152, 0, 0.4);
+    border-radius: 2px;
+    color: #ff9800;
+    font-size: 0.58rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .release-tow-mini-btn:hover { background: rgba(255, 152, 0, 0.15); }
+
   /* ---- Wreck list ---- */
   .wreck-list {
     display: flex;
@@ -447,9 +534,10 @@
   }
 
   .action-btn .material-icons { font-size: 13px; }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .salvage-btn { color: #ff9800; border-color: rgba(255, 152, 0, 0.3); }
-  .salvage-btn:hover { background: rgba(255, 152, 0, 0.12); border-color: rgba(255, 152, 0, 0.6); }
+  .tow-btn { color: #ff9800; border-color: rgba(255, 152, 0, 0.3); }
+  .tow-btn:hover:not(:disabled) { background: rgba(255, 152, 0, 0.12); border-color: rgba(255, 152, 0, 0.6); }
 
   .loot-btn { color: #4caf50; border-color: rgba(76, 175, 80, 0.3); }
   .loot-btn:hover { background: rgba(76, 175, 80, 0.12); border-color: rgba(76, 175, 80, 0.6); }
@@ -473,28 +561,44 @@
   }
 
   .action-btn-lg .material-icons { font-size: 15px; }
+  .action-btn-lg:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .loot-all-btn { color: #4caf50; border-color: rgba(76, 175, 80, 0.4); }
   .loot-all-btn:hover { background: rgba(76, 175, 80, 0.12); }
 
-  .salvage-lg-btn { color: #ff9800; border-color: rgba(255, 152, 0, 0.4); }
-  .salvage-lg-btn:hover { background: rgba(255, 152, 0, 0.12); }
+  .tow-lg-btn { color: #ff9800; border-color: rgba(255, 152, 0, 0.4); }
+  .tow-lg-btn:hover:not(:disabled) { background: rgba(255, 152, 0, 0.12); }
+
+  .sell-wreck-btn { color: #ffd700; border-color: rgba(255, 215, 0, 0.4); }
+  .sell-wreck-btn:hover { background: rgba(255, 215, 0, 0.08); }
 
   .scrap-btn { color: #78909c; border-color: rgba(120, 144, 156, 0.4); }
   .scrap-btn:hover { background: rgba(120, 144, 156, 0.12); }
 
+  .release-btn { color: #ff9800; border-color: rgba(255, 152, 0, 0.4); }
+  .release-btn:hover { background: rgba(255, 152, 0, 0.12); }
+
   .self-destruct-btn { color: #f44336; border-color: rgba(244, 67, 54, 0.4); }
   .self-destruct-btn:hover { background: rgba(244, 67, 54, 0.12); }
 
-  /* ---- Scrap section ---- */
-  .scrap-section {
+  /* ---- Salvage Yard section ---- */
+  .salvage-yard-section {
     margin-top: 4px;
+  }
+
+  .yard-actions {
+    display: flex;
+    gap: 6px;
   }
 
   .hint-text {
     font-size: 0.65rem;
     color: #455a64;
     margin-top: 4px;
+  }
+
+  .tow-ready {
+    color: #ff9800;
   }
 
   /* ---- Detail panel ---- */
@@ -613,6 +717,18 @@
   }
 
   .wreck-action-row { margin-bottom: 4px; }
+
+  /* ---- Tow section ---- */
+  .tow-section {
+    margin-top: 4px;
+  }
+
+  .tow-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #ff9800 !important;
+  }
 
   /* ---- Self Destruct ---- */
   .self-destruct-section {

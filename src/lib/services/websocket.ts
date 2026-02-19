@@ -337,13 +337,24 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message });
           // Refresh wreck list after looting
           this.getWrecks();
-        } else if (cmd === 'salvage_wreck') {
-          const message = (result?.message as string) ?? 'Wreck salvaged';
+        } else if (cmd === 'tow_wreck') {
+          const message = (result?.message as string) ?? 'Wreck attached to tow';
           eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(true);
           this.getWrecks();
+        } else if (cmd === 'release_tow') {
+          const message = (result?.message as string) ?? 'Tow released';
+          eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(false);
+          this.getWrecks();
+        } else if (cmd === 'sell_wreck') {
+          const message = (result?.message as string) ?? 'Wreck sold';
+          eventsStore.add({ type: 'trade', message });
+          scavengerStore.setTowing(false);
         } else if (cmd === 'scrap_wreck') {
           const message = (result?.message as string) ?? 'Wreck scrapped';
           eventsStore.add({ type: 'info', message });
+          scavengerStore.setTowing(false);
         } else if (cmd === 'self_destruct') {
           const message = (result?.message as string) ?? 'Ship self-destructed';
           eventsStore.add({ type: 'combat', message });
@@ -1034,8 +1045,16 @@ class WebSocketService {
     this.send({ type: 'loot_wreck', payload: { wreck_id: wreckId, item_id: itemId, quantity } });
   }
 
-  salvageWreck(wreckId: string) {
-    this.send({ type: 'salvage_wreck', payload: { wreck_id: wreckId } });
+  towWreck(wreckId: string) {
+    this.send({ type: 'tow_wreck', payload: { wreck_id: wreckId } });
+  }
+
+  releaseTow() {
+    this.send({ type: 'release_tow' });
+  }
+
+  sellWreck() {
+    this.send({ type: 'sell_wreck' });
   }
 
   scrapWreck() {

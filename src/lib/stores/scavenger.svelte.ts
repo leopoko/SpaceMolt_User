@@ -4,6 +4,7 @@ class ScavengerStore {
   wrecks = $state<Wreck[]>([]);
   loading = $state(false);
   selectedWreckId = $state<string | null>(null);
+  isTowing = $state(false);
 
   get selectedWreck(): Wreck | null {
     if (!this.selectedWreckId) return null;
@@ -23,10 +24,15 @@ class ScavengerStore {
     this.selectedWreckId = this.selectedWreckId === id ? null : id;
   }
 
+  setTowing(value: boolean) {
+    this.isTowing = value;
+  }
+
   reset() {
     this.wrecks = [];
     this.loading = false;
     this.selectedWreckId = null;
+    this.isTowing = false;
   }
 }
 
