@@ -1,7 +1,7 @@
 import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
-  Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
+  Faction, Recipe, FleetData, ChatMessage, EventLogEntry, Module,
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition,
   ForumThread, ForumReply, ForumCategory
@@ -217,7 +217,9 @@ class WebSocketService {
         const pl = p<StateUpdatePayload>(msg);
         if (pl.player) playerStore.update(pl.player);
         if (pl.ship) shipStore.updateCurrent(pl.ship);
-        if (pl.modules) shipStore.updateModules(pl.modules);
+        // modules: null means no modules; truthy array updates; undefined = no change
+        if (pl.modules === null) shipStore.updateModules([]);
+        else if (pl.modules) shipStore.updateModules(pl.modules);
         if (pl.nearby) systemStore.setNearby(pl.nearby);
         if (pl.in_combat !== undefined) combatStore.setInCombat(pl.in_combat);
         // Also handle legacy fields (events, chat, system) for forward-compatibility
@@ -326,6 +328,22 @@ class WebSocketService {
           if (result.base_id) {
             playerStore.update({ home_base: result.base_id as string });
           }
+        } else if (cmd === 'install_mod') {
+          const modId = (result?.module_id as string) ?? '';
+          const message = (result?.message as string) ?? `Module installed: ${modId}`;
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
+        } else if (cmd === 'uninstall_mod') {
+          const modId = (result?.module_id as string) ?? '';
+          const message = (result?.message as string) ?? `Module uninstalled: ${modId}`;
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          if (result?.modules) shipStore.updateModules(result.modules as Module[]);
+          // Always refresh ship data to sync modules/cargo/CPU/PWR
+          this.getStatus();
         } else if (cmd === 'craft') {
           const message = (result?.message as string) ?? 'Craft complete';
           craftingStore.setLastResult(message);
@@ -935,6 +953,17 @@ class WebSocketService {
             // Chain: get_base ok → view_storage (avoid concurrent queries)
             this.viewStorage();
           }
+        } else if (!pl.action && (msg.payload as Record<string, unknown>)?.player && (msg.payload as Record<string, unknown>)?.ship) {
+          // get_status response: has player + ship at top level, no action field
+          const raw = msg.payload as Record<string, unknown>;
+          if (raw.player) playerStore.update(raw.player as never);
+          if (raw.ship) shipStore.updateCurrent(raw.ship as never);
+          // modules can be null (no modules installed) or Module[]
+          if (raw.modules === null || (Array.isArray(raw.modules) && raw.modules.length === 0)) {
+            shipStore.updateModules([]);
+          } else if (Array.isArray(raw.modules)) {
+            shipStore.updateModules(raw.modules as Module[]);
+          }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
           if (pl.message) {
@@ -1144,9 +1173,14 @@ class WebSocketService {
 
   listShips() { this.send({ type: 'list_ships' }); }
   getShipCatalog() { this.send({ type: 'get_ships' }); }
-  buyShip(shipType: string) { this.send({ type: 'buy_ship', payload: { ship_type: shipType } }); }
-  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship: shipId } }); }
-  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship: shipId } }); }
+  buyShip(shipClass: string) { this.send({ type: 'buy_ship', payload: { ship_class: shipClass } }); }
+  sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship_id: shipId } }); }
+  switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship_id: shipId } }); }
+
+  // ---- Module Management ----
+
+  installMod(moduleId: string) { this.send({ type: 'install_mod', payload: { module_id: moduleId } }); }
+  uninstallMod(moduleId: string) { this.send({ type: 'uninstall_mod', payload: { module_id: moduleId } }); }
 
   // ---- Crafting ----
 
