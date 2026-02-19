@@ -293,14 +293,9 @@ The server sends JSON messages over WebSocket. Key message types include:
 
 ## License / ライセンス
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+This project is licensed under the **MIT License**.
 
-このプロジェクトは **GNU Affero General Public License v3.0 (AGPL-3.0)** の下でライセンスされています。
-
-This license ensures that:
-- The source code remains open and accessible / ソースコードがオープンでアクセス可能であること
-- Any modifications must also be shared under the same license / 修正版も同じライセンスで共有すること
-- If the software is used to provide a network service, the source code must be made available to users of that service / ネットワークサービスとして利用する場合、そのサービスのユーザーにもソースコードを提供すること
+このプロジェクトは **MIT License** の下でライセンスされています。
 
 See the [LICENSE](LICENSE) file for the full text.
 
