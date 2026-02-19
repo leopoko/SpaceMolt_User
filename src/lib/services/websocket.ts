@@ -444,10 +444,14 @@ class WebSocketService {
         const pl = p<{ item?: string; quantity?: number; ship?: never }>(msg);
         eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${pl.item ?? 'ore'}` });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
-        // Track mining yield in system memo
+        // Track mining yield in system memo and auto-save system data
         const yieldSystemId = playerStore.system_id;
         const yieldPoiId = playerStore.poi_id;
         if (yieldSystemId && yieldPoiId && pl.item && (pl.quantity ?? 0) > 0) {
+          // Ensure system memo exists, then add yield
+          if (!systemMemoStore.hasMemo(yieldSystemId)) {
+            systemMemoStore.save(systemStore.data);
+          }
           systemMemoStore.addMiningYield(yieldSystemId, yieldPoiId, pl.item, pl.quantity!);
         }
         break;
@@ -906,6 +910,22 @@ class WebSocketService {
             // Chain: get_base ok → view_storage (avoid concurrent queries)
             this.viewStorage();
           }
+        } else if (pl.action === 'jumped') {
+          // Jump completed (multi-tick jump)
+          const raw = msg.payload as Record<string, unknown>;
+          const dest = (raw.system as string) ?? '';
+          const destId = (raw.system_id as string) ?? '';
+          const fromSystem = (raw.from_system as string) ?? '';
+          const poiId = (raw.poi as string) ?? null;
+          systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+          if (destId) {
+            playerStore.update({ current_system: destId } as never);
+          }
+          if (poiId) {
+            playerStore.update({ current_poi: poiId, poi_id: poiId } as never);
+          }
+          eventsStore.add({ type: 'nav', message: `Jumped to ${dest}${fromSystem ? ` (from ${fromSystem})` : ''}` });
+          this.getSystem();
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
           if (pl.message) {

@@ -74,26 +74,49 @@
 
   // ---- Mining Statistics from System Memo ----
   let currentSystemId = $derived(playerStore.system_id);
+  let currentPoiId = $derived(playerStore.poi_id);
+
+  // Current POI stats (primary display)
+  let currentPoiStats = $derived.by(() => {
+    if (!currentSystemId || !currentPoiId) return null;
+    const stats = systemMemoStore.getMiningStats(currentSystemId, currentPoiId);
+    if (!stats || stats.totalMined === 0) return null;
+    const poiName = systemStore.pois.find(p => p.id === currentPoiId)?.name ?? currentPoiId;
+    const items = Object.entries(stats.items)
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+    return { poiId: currentPoiId, poiName, items, total: stats.totalMined };
+  });
+
+  // All system POI stats (secondary, collapsible)
   let systemMiningStats = $derived(
     currentSystemId ? systemMemoStore.getSystemMiningStats(currentSystemId) : {}
   );
 
-  // Flatten stats: sorted list of { poiId, poiName, items: { name, count, pct }[], total }
-  let miningStatsDisplay = $derived.by(() => {
+  let otherPoiStats = $derived.by(() => {
     const entries = Object.entries(systemMiningStats);
     if (entries.length === 0) return [];
-    return entries.map(([poiId, stats]) => {
-      const poiName = systemStore.pois.find(p => p.id === poiId)?.name ?? poiId;
-      const items = Object.entries(stats.items)
-        .map(([name, count]) => ({
-          name,
-          count,
-          pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
-        }))
-        .sort((a, b) => b.count - a.count);
-      return { poiId, poiName, items, total: stats.totalMined };
-    }).sort((a, b) => b.total - a.total);
+    return entries
+      .filter(([poiId]) => poiId !== currentPoiId)
+      .map(([poiId, stats]) => {
+        const poiName = systemStore.pois.find(p => p.id === poiId)?.name ?? poiId;
+        const items = Object.entries(stats.items)
+          .map(([name, count]) => ({
+            name,
+            count,
+            pct: stats.totalMined > 0 ? (count / stats.totalMined * 100) : 0
+          }))
+          .sort((a, b) => b.count - a.count);
+        return { poiId, poiName, items, total: stats.totalMined };
+      })
+      .sort((a, b) => b.total - a.total);
   });
+
+  let showOtherPois = $state(false);
 
   function clearMiningStats(poiId?: string) {
     if (currentSystemId) {
@@ -154,35 +177,67 @@
         </Button>
       </div>
 
-      <!-- Mining Statistics from Memo -->
-      {#if miningStatsDisplay.length > 0}
+      <!-- Current POI Mining Statistics -->
+      {#if currentPoiStats}
         <div class="mining-stats-section">
           <div class="stats-head">
-            <p class="tab-section-title" style="margin:0">Mining Statistics</p>
-            <button class="stats-clear-btn" onclick={() => clearMiningStats()} title="Clear all stats for this system">
+            <p class="tab-section-title" style="margin:0">This POI — {currentPoiStats.poiName}</p>
+            <button class="stats-clear-btn" onclick={() => clearMiningStats(currentPoiStats!.poiId)} title="Clear stats for this POI">
               <span class="material-icons" style="font-size:12px">delete</span> Clear
             </button>
           </div>
-          {#each miningStatsDisplay as poi}
-            <div class="stats-poi">
-              <div class="stats-poi-head">
-                <span class="stats-poi-name">{poi.poiName}</span>
-                <span class="stats-poi-total mono">{poi.total} total</span>
-              </div>
-              <div class="stats-items">
-                {#each poi.items as item}
-                  <div class="stats-item-row">
-                    <div class="stats-item-bar-bg">
-                      <div class="stats-item-bar" style="width:{item.pct}%"></div>
-                    </div>
-                    <span class="stats-item-name">{item.name}</span>
-                    <span class="stats-item-count mono">{item.count}</span>
-                    <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
-                  </div>
-                {/each}
-              </div>
+          <div class="stats-poi">
+            <div class="stats-poi-head">
+              <span class="stats-poi-total mono">{currentPoiStats.total} total mined</span>
             </div>
-          {/each}
+            <div class="stats-items">
+              {#each currentPoiStats.items as item}
+                <div class="stats-item-row">
+                  <div class="stats-item-bar-bg">
+                    <div class="stats-item-bar" style="width:{item.pct}%"></div>
+                  </div>
+                  <span class="stats-item-name">{item.name}</span>
+                  <span class="stats-item-count mono">{item.count}</span>
+                  <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Other POI Mining Statistics (collapsible) -->
+      {#if otherPoiStats.length > 0}
+        <div class="mining-stats-section other-pois-section">
+          <div class="other-pois-toggle" role="button" tabindex="0" onclick={() => showOtherPois = !showOtherPois} onkeydown={(e) => e.key === 'Enter' && (showOtherPois = !showOtherPois)}>
+            <span class="material-icons toggle-arrow" class:toggle-open={showOtherPois}>expand_more</span>
+            <span class="tab-section-title" style="margin:0">Other POIs ({otherPoiStats.length})</span>
+            <button class="stats-clear-btn" onclick={(e) => { e.stopPropagation(); clearMiningStats(); }} title="Clear all stats">
+              <span class="material-icons" style="font-size:12px">delete</span> Clear All
+            </button>
+          </div>
+          {#if showOtherPois}
+            {#each otherPoiStats as poi}
+              <div class="stats-poi">
+                <div class="stats-poi-head">
+                  <span class="stats-poi-name">{poi.poiName}</span>
+                  <span class="stats-poi-total mono">{poi.total} total</span>
+                </div>
+                <div class="stats-items">
+                  {#each poi.items as item}
+                    <div class="stats-item-row">
+                      <div class="stats-item-bar-bg">
+                        <div class="stats-item-bar" style="width:{item.pct}%"></div>
+                      </div>
+                      <span class="stats-item-name">{item.name}</span>
+                      <span class="stats-item-count mono">{item.count}</span>
+                      <span class="stats-item-pct mono">{item.pct.toFixed(1)}%</span>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          {/if}
         </div>
       {/if}
     </Content>
@@ -509,4 +564,33 @@
     position: relative;
     z-index: 1;
   }
+
+  .other-pois-section {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 8px;
+  }
+
+  .other-pois-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 0;
+    width: 100%;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+  }
+  .other-pois-toggle:hover { opacity: 0.8; }
+
+  .toggle-arrow {
+    font-size: 18px;
+    color: #546e7a;
+    transition: transform 0.2s ease;
+    transform: rotate(-90deg);
+  }
+  .toggle-open { transform: rotate(0deg); }
 </style>
