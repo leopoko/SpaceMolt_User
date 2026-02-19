@@ -24,7 +24,7 @@ export const TABS: TabDef[] = [
 ];
 
 class UiStore {
-  activeTab = $state<TabDef>(TABS[0]);
+  activeTab = $state.raw<TabDef>(TABS[0]);
   darkMode = $state(getBool('spacemolt_darkmode', true));
   notification = $state<string | null>(null);
   notificationTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
