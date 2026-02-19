@@ -11,6 +11,17 @@
 
   let nearbyOpen = $state(false);
 
+  // Walk the action queue to compute effective dock state.
+  // Start from actual dock state, then flip for each queued Dock/Undock in order.
+  let effectivelyDocked = $derived.by(() => {
+    let docked = playerStore.isDocked;
+    for (const item of actionQueueStore.items) {
+      if (item.label === 'Undock') docked = false;
+      else if (item.label.startsWith('Dock @')) docked = true;
+    }
+    return docked;
+  });
+
   const secColor: Record<string, string> = {
     high: '#4caf50', medium: '#ff9800', low: '#f44336', null: '#9c27b0'
   };
@@ -111,12 +122,13 @@
                     <Button variant="outlined" dense onclick={doUndock}>
                       <Label>Undock</Label>
                     </Button>
-                  {:else}
+                  {/if}
+                  {#if !(isHere && playerStore.isDocked)}
                     <!-- Travel to any POI -->
                     <Button
                       variant="outlined"
                       dense
-                      disabled={systemStore.travel.in_progress || playerStore.isDocked}
+                      disabled={effectivelyDocked}
                       onclick={() => doTravel(poi.id, poi.name)}
                     >
                       <Label>Travel</Label>
@@ -126,7 +138,7 @@
                       <Button
                         variant="outlined"
                         dense
-                        disabled={playerStore.isDocked || systemStore.travel.in_progress}
+                        disabled={effectivelyDocked}
                         onclick={() => doDock(poi.id, poi.name)}
                       >
                         <Label>Dock</Label>
@@ -194,7 +206,7 @@
                 <Button
                   variant="outlined"
                   dense
-                  disabled={systemStore.travel.in_progress}
+                  disabled={effectivelyDocked}
                   onclick={() => doJump(conn.system_id, conn.system_name)}
                 >
                   <Label>Jump</Label>
