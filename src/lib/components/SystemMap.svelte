@@ -2,6 +2,7 @@
   import type { POI } from '$lib/types/game';
   import { playerStore } from '$lib/stores/player.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
+  import { mapSettingsStore } from '$lib/stores/mapSettings.svelte';
 
   let { pois = [] }: { pois: POI[] } = $props();
 
@@ -136,7 +137,7 @@
       const orbitR = Math.sqrt(px * px + py * py);
       if (orbitR < 0.01) { result.set(poi.id, []); continue; }
 
-      const rockCount = 320;
+      const rockCount = mapSettingsStore.rockDensity;
       const rocks: { x: number; y: number; r: number; opacity: number }[] = [];
       const baseR = s * 0.007;
 
@@ -204,30 +205,34 @@
     </defs>
 
     <!-- Grid lines (subtle) -->
-    {#each Array.from({length: 11}, (_, i) => (i - 5) * s * 0.4) as off}
-      <line
-        x1={mapMetrics.cx + off} y1={mapMetrics.vy} x2={mapMetrics.cx + off} y2={mapMetrics.vy + mapMetrics.vh}
-        stroke="rgba(79,195,247,0.04)" stroke-width={sw * 0.3}
-      />
-      <line
-        x1={mapMetrics.vx} y1={mapMetrics.cy + off} x2={mapMetrics.vx + mapMetrics.vw} y2={mapMetrics.cy + off}
-        stroke="rgba(79,195,247,0.04)" stroke-width={sw * 0.3}
-      />
-    {/each}
+    {#if mapSettingsStore.showGrid}
+      {#each Array.from({length: 11}, (_, i) => (i - 5) * s * 0.4) as off}
+        <line
+          x1={mapMetrics.cx + off} y1={mapMetrics.vy} x2={mapMetrics.cx + off} y2={mapMetrics.vy + mapMetrics.vh}
+          stroke="rgba(79,195,247,0.04)" stroke-width={sw * 0.3}
+        />
+        <line
+          x1={mapMetrics.vx} y1={mapMetrics.cy + off} x2={mapMetrics.vx + mapMetrics.vw} y2={mapMetrics.cy + off}
+          stroke="rgba(79,195,247,0.04)" stroke-width={sw * 0.3}
+        />
+      {/each}
+    {/if}
 
     <!-- Orbital circles (dashed, centered at 0,0) -->
-    {#each orbits as r}
-      <circle
-        cx={0} cy={0} r={r}
-        fill="none"
-        stroke="rgba(79,195,247,0.12)"
-        stroke-width={sw * 0.5}
-        stroke-dasharray="{s * 0.02} {s * 0.015}"
-      />
-    {/each}
+    {#if mapSettingsStore.showOrbitLines}
+      {#each orbits as r}
+        <circle
+          cx={0} cy={0} r={r}
+          fill="none"
+          stroke="rgba(79,195,247,0.12)"
+          stroke-width={sw * 0.5}
+          stroke-dasharray="{s * 0.02} {s * 0.015}"
+        />
+      {/each}
+    {/if}
 
     <!-- Travel line animation -->
-    {#if travelLine}
+    {#if travelLine && mapSettingsStore.showTravelAnim}
       <line
         x1={travelLine.x1} y1={travelLine.y1}
         x2={travelLine.x2} y2={travelLine.y2}
@@ -262,7 +267,7 @@
       {@const dotR = dotRadius(poi.type, s)}
 
       <!-- Wave ripples for POIs with players -->
-      {#if online > 0}
+      {#if online > 0 && mapSettingsStore.showPlayerWaves}
         {#each [0, 1, 2] as waveIdx}
           <circle
             cx={x} cy={y}

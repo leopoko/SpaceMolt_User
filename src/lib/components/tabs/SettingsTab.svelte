@@ -7,6 +7,7 @@
   import { connectionStore } from '$lib/stores/connection.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
+  import { mapSettingsStore } from '$lib/stores/mapSettings.svelte';
   import { ws } from '$lib/services/websocket';
 
   let serverUrl = $state(connectionStore.serverUrl);
@@ -150,6 +151,78 @@
     </Content>
   </Card>
 
+  <!-- System Map -->
+  <Card class="space-card">
+    <Content>
+      <p class="tab-section-title">System Map</p>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Asteroid Density</span>
+          <span class="setting-desc">Rock count per belt ({mapSettingsStore.rockDensity})</span>
+        </div>
+        <input
+          type="range" min="40" max="640" step="40"
+          value={mapSettingsStore.rockDensity}
+          oninput={(e: Event) => mapSettingsStore.setRockDensity(Number((e.target as HTMLInputElement).value))}
+          class="range-input"
+        />
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Travel Animation</span>
+          <span class="setting-desc">Moving dots along travel path</span>
+        </div>
+        <FormField>
+          <Switch
+            checked={mapSettingsStore.showTravelAnim}
+            onchange={() => mapSettingsStore.setShowTravelAnim(!mapSettingsStore.showTravelAnim)}
+          />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Player Waves</span>
+          <span class="setting-desc">Ripple effect at POIs with players</span>
+        </div>
+        <FormField>
+          <Switch
+            checked={mapSettingsStore.showPlayerWaves}
+            onchange={() => mapSettingsStore.setShowPlayerWaves(!mapSettingsStore.showPlayerWaves)}
+          />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Orbit Lines</span>
+          <span class="setting-desc">Dashed orbital circles</span>
+        </div>
+        <FormField>
+          <Switch
+            checked={mapSettingsStore.showOrbitLines}
+            onchange={() => mapSettingsStore.setShowOrbitLines(!mapSettingsStore.showOrbitLines)}
+          />
+        </FormField>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-name">Grid Lines</span>
+          <span class="setting-desc">Background grid overlay</span>
+        </div>
+        <FormField>
+          <Switch
+            checked={mapSettingsStore.showGrid}
+            onchange={() => mapSettingsStore.setShowGrid(!mapSettingsStore.showGrid)}
+          />
+        </FormField>
+      </div>
+    </Content>
+  </Card>
+
   <!-- About -->
   <Card class="space-card">
     <Content>
@@ -217,6 +290,12 @@
   .setting-desc { font-size: 0.68rem; color: #4a6070; margin-top: 2px; }
 
   .tick-val { font-size: 0.78rem; color: #4fc3f7; }
+
+  .range-input {
+    width: 120px;
+    accent-color: #4fc3f7;
+    cursor: pointer;
+  }
 
   .about-block { display: flex; flex-direction: column; gap: 8px; }
   .about-title { font-size: 0.9rem; color: #4fc3f7; font-weight: 400; margin: 0; }
