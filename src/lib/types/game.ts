@@ -467,22 +467,36 @@ export interface Skill {
 
 export interface Mission {
   id: string;
+  mission_id?: string;
+  template_id?: string;
   title: string;
   description: string;
+  type?: string;
   difficulty: number;
   reward_credits: number;
   reward_items: CargoItem[];
+  reward_xp?: Record<string, number>;
   status: MissionStatus;
   objectives: MissionObjective[];
   expires_at: number | null;
+  time_limit?: number;
+  accepted_at?: string;
+  giver_name?: string;
+  giver_dialog?: string;
+  decline_dialog?: string;
+  destination?: string;
+  destination_name?: string;
 }
 
 export interface MissionObjective {
   id: string;
   description: string;
+  type?: string;
   target: number;
   current: number;
   complete: boolean;
+  item_id?: string;
+  item_name?: string;
 }
 
 // ---- Achievements ----

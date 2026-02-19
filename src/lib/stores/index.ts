@@ -15,5 +15,6 @@ export { contactsStore } from './contacts.svelte';
 export { catalogStore } from './catalog.svelte';
 export { mapSettingsStore } from './mapSettings.svelte';
 export { forumStore } from './forum.svelte';
+export { missionStore } from './mission.svelte';
 export { uiStore, TABS } from './ui.svelte';
 export type { TabDef } from './ui.svelte';
