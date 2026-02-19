@@ -216,7 +216,9 @@ class WebSocketService {
         const pl = p<StateUpdatePayload>(msg);
         if (pl.player) playerStore.update(pl.player);
         if (pl.ship) shipStore.updateCurrent(pl.ship);
-        if (pl.modules) shipStore.updateModules(pl.modules);
+        // modules: null means no modules; truthy array updates; undefined = no change
+        if (pl.modules === null) shipStore.updateModules([]);
+        else if (pl.modules) shipStore.updateModules(pl.modules);
         if (pl.nearby) systemStore.setNearby(pl.nearby);
         if (pl.in_combat !== undefined) combatStore.setInCombat(pl.in_combat);
         // Also handle legacy fields (events, chat, system) for forward-compatibility
@@ -906,6 +908,17 @@ class WebSocketService {
             baseStore.setBase(base, condition);
             // Chain: get_base ok → view_storage (avoid concurrent queries)
             this.viewStorage();
+          }
+        } else if (!pl.action && (msg.payload as Record<string, unknown>)?.player && (msg.payload as Record<string, unknown>)?.ship) {
+          // get_status response: has player + ship at top level, no action field
+          const raw = msg.payload as Record<string, unknown>;
+          if (raw.player) playerStore.update(raw.player as never);
+          if (raw.ship) shipStore.updateCurrent(raw.ship as never);
+          // modules can be null (no modules installed) or Module[]
+          if (raw.modules === null || (Array.isArray(raw.modules) && raw.modules.length === 0)) {
+            shipStore.updateModules([]);
+          } else if (Array.isArray(raw.modules)) {
+            shipStore.updateModules(raw.modules as Module[]);
           }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick

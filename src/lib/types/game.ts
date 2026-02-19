@@ -640,7 +640,7 @@ export interface StateUpdatePayload {
   tick?: number;
   player?: Player;
   ship?: Ship;
-  modules?: Module[];
+  modules?: Module[] | null;
   nearby?: NearbyPlayer[];
   in_combat?: boolean;
 }
