@@ -3,21 +3,26 @@ import type { Recipe } from '$lib/types/game';
 class CraftingStore {
   recipes = $state<Recipe[]>([]);
   selectedRecipe = $state<Recipe | null>(null);
-  craftingInProgress = $state(false);
-  craftQuantity = $state(1);
+  craftCount = $state(1);
   lastResult = $state<string | null>(null);
 
-  setRecipes(recipes: Recipe[]) {
-    this.recipes = recipes;
+  /** Accept the Record<id, Recipe> format from get_recipes and convert to array */
+  setRecipes(recipesMap: Record<string, Recipe>) {
+    this.recipes = Object.values(recipesMap);
+  }
+
+  /** Sorted unique category list derived from loaded recipes */
+  get categories(): string[] {
+    const cats = new Set<string>();
+    for (const r of this.recipes) {
+      if (r.category) cats.add(r.category);
+    }
+    return [...cats].sort();
   }
 
   selectRecipe(recipe: Recipe | null) {
     this.selectedRecipe = recipe;
-    this.craftQuantity = 1;
-  }
-
-  setInProgress(value: boolean) {
-    this.craftingInProgress = value;
+    this.craftCount = 1;
   }
 
   setLastResult(msg: string) {
@@ -26,7 +31,6 @@ class CraftingStore {
   }
 
   reset() {
-    this.craftingInProgress = false;
     this.lastResult = null;
   }
 }

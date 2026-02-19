@@ -306,6 +306,12 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
           this.viewStorage();
+        } else if (cmd === 'craft') {
+          const message = (result?.message as string) ?? 'Craft complete';
+          craftingStore.setLastResult(message);
+          eventsStore.add({ type: 'info', message });
+          if (result?.ship) shipStore.updateCurrent(result.ship as never);
+          this.viewStorage();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -326,6 +332,9 @@ class WebSocketService {
         // Clear travel state on travel/jump errors
         if (cmd === 'travel' || cmd === 'jump') {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+        }
+        if (cmd === 'craft') {
+          craftingStore.setLastResult(errMsg);
         }
         eventsStore.add({ type: 'error', message: errMsg });
         break;
@@ -355,9 +364,8 @@ class WebSocketService {
           poi_id: pl.station_id ?? null,
           docked_at_base: pl.station_id ?? null
         });
-        // Auto-load station info and storage when docked
+        // Auto-load station info (view_storage is chained from get_base ok handler)
         this.getBase();
-        this.viewStorage();
         break;
       }
 
@@ -467,17 +475,19 @@ class WebSocketService {
 
       case 'craft_result': {
         const pl = p<{ message?: string; success?: boolean; ship?: never }>(msg);
-        craftingStore.setInProgress(false);
         const resultMsg = pl.message ?? (pl.success ? 'Craft complete' : 'Craft failed');
         craftingStore.setLastResult(resultMsg);
         eventsStore.add({ type: 'info', message: resultMsg });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
+        this.viewStorage();
         break;
       }
 
       case 'recipes': {
-        const pl = p<{ recipes?: Recipe[] }>(msg);
-        craftingStore.setRecipes(pl.recipes ?? []);
+        const pl = p<{ recipes?: Record<string, Recipe> }>(msg);
+        if (pl.recipes && typeof pl.recipes === 'object') {
+          craftingStore.setRecipes(pl.recipes);
+        }
         break;
       }
 
@@ -565,6 +575,8 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
+        } else if ((pl as Record<string, unknown>).recipes && typeof (pl as Record<string, unknown>).recipes === 'object' && !Array.isArray((pl as Record<string, unknown>).recipes)) {
+          craftingStore.setRecipes((pl as Record<string, unknown>).recipes as Record<string, Recipe>);
         } else if (isCatalogResponse(pl)) {
           catalogStore.handleResponse(pl as unknown as CatalogResponse);
         } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
@@ -589,6 +601,8 @@ class WebSocketService {
           const condition = raw.condition as BaseCondition | undefined;
           if (base && base.name) {
             baseStore.setBase(base, condition);
+            // Chain: get_base ok → view_storage (avoid concurrent queries)
+            this.viewStorage();
           }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
@@ -726,9 +740,8 @@ class WebSocketService {
   // ---- Crafting ----
 
   getRecipes() { this.send({ type: 'get_recipes' }); }
-  craft(recipeId: string, quantity: number) {
-    craftingStore.setInProgress(true);
-    this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
+  craft(recipeId: string, count: number) {
+    this.send({ type: 'craft', payload: { recipe_id: recipeId, count: Math.min(Math.max(1, count), 10) } });
   }
 
   // ---- Storage / Base ----
