@@ -402,10 +402,10 @@
             </thead>
             <tbody>
               {#each shipStore.cargo as c}
+                {@const mp = marketMemoStore.getItemPrice(c.item_id)}
                 <tr>
                   <td>{c.name ?? c.item_id}</td>
                   <td class="num mono">{c.quantity}</td>
-                  {@const mp = marketMemoStore.getItemPrice(c.item_id)}
                   <td class="num mono">
                     {#if mp && mp.best_buy > 0}
                       <span class="buy-price">B:₡{mp.best_buy}</span>
