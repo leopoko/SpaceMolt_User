@@ -177,6 +177,14 @@
     enqueueCraftStep(true);
   }
 
+  /** Search recipes by item_id with a specific search mode */
+  function searchByItem(itemId: string, mode: 'input' | 'output') {
+    searchText = itemId;
+    searchMode = mode;
+    selectedCategory = '';
+    cargoOnly = false;
+  }
+
   function loadRecipes() {
     ws.getRecipes();
   }
@@ -341,7 +349,14 @@
             {@const inputMp = marketMemoStore.getItemPrice(input.item_id)}
             <div class="material-row" class:ok={have} class:missing={!have}>
               <span class="mat-name">
-                {formatItemId(input.item_id)}
+                <span class="mat-name-line">
+                  {formatItemId(input.item_id)}
+                  <button
+                    class="item-search-btn"
+                    title="Search recipes that produce this item"
+                    onclick={(e) => { e.stopPropagation(); searchByItem(input.item_id, 'output'); }}
+                  ><span class="material-icons item-search-icon">search</span></button>
+                </span>
                 {#if storageQty > 0}
                   <span class="source-hint">({cargoQty}+{storageQty})</span>
                 {/if}
@@ -368,7 +383,14 @@
           {@const outputMp = marketMemoStore.getItemPrice(output.item_id)}
           <div class="output-row">
             <span class="mat-name">
-              {formatItemId(output.item_id)}
+              <span class="mat-name-line">
+                {formatItemId(output.item_id)}
+                <button
+                  class="item-search-btn"
+                  title="Search recipes that use this item"
+                  onclick={(e) => { e.stopPropagation(); searchByItem(output.item_id, 'input'); }}
+                ><span class="material-icons item-search-icon">search</span></button>
+              </span>
               {#if outputMp && (outputMp.best_buy > 0 || outputMp.best_sell > 0)}
                 <span class="memo-inline">{#if outputMp.best_buy > 0}<span class="memo-buy">B:₡{outputMp.best_buy}</span>{/if}{#if outputMp.best_sell > 0}{#if outputMp.best_buy > 0} / {/if}<span class="memo-sell">S:₡{outputMp.best_sell}</span>{/if}</span>
               {/if}
@@ -833,4 +855,28 @@
 
   .memo-buy { color: #66bb6a; }
   .memo-sell { color: #ff9800; }
+
+  /* Item search buttons */
+  .mat-name-line {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .item-search-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    color: #546e7a;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .item-search-btn:hover { color: #4fc3f7; }
+
+  .item-search-icon {
+    font-size: 14px;
+  }
 </style>
