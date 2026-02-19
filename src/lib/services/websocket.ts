@@ -363,9 +363,8 @@ class WebSocketService {
           poi_id: pl.station_id ?? null,
           docked_at_base: pl.station_id ?? null
         });
-        // Auto-load station info and storage when docked
+        // Auto-load station info (view_storage is chained from get_base ok handler)
         this.getBase();
-        this.viewStorage();
         break;
       }
 
@@ -600,6 +599,8 @@ class WebSocketService {
           const condition = raw.condition as BaseCondition | undefined;
           if (base && base.name) {
             baseStore.setBase(base, condition);
+            // Chain: get_base ok → view_storage (avoid concurrent queries)
+            this.viewStorage();
           }
         } else if (pl.pending) {
           // Mutation accepted, will execute on next tick
@@ -737,8 +738,8 @@ class WebSocketService {
   // ---- Crafting ----
 
   getRecipes() { this.send({ type: 'get_recipes' }); }
-  craft(recipeId: string, quantity: number) {
-    this.send({ type: 'craft', payload: { recipe_id: recipeId, quantity } });
+  craft(recipeId: string, count: number) {
+    this.send({ type: 'craft', payload: { recipe_id: recipeId, count: Math.min(Math.max(1, count), 10) } });
   }
 
   // ---- Storage / Base ----

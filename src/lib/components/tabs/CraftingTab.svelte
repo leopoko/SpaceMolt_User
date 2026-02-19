@@ -66,21 +66,28 @@
     return getCargoQty(itemId) >= required;
   }
 
+  /** Clamp count to 1-10 */
+  const clampedCount = $derived(Math.max(1, Math.min(craftingStore.craftCount, 10)));
+  const clampedRepeat = $derived(Math.max(1, repeatCount));
+  /** Total materials needed = per-craft × count × repeat */
+  const totalMultiplier = $derived(clampedCount * clampedRepeat);
+
   function canCraft(recipe: Recipe): boolean {
     if (!recipe.inputs?.length) return false;
-    return recipe.inputs.every(i => hasMaterial(i.item_id, i.quantity * craftingStore.craftQuantity));
+    // Check if we have enough for at least one action (count only)
+    return recipe.inputs.every(i => hasMaterial(i.item_id, i.quantity * clampedCount));
   }
 
   function doCraft() {
     if (!craftingStore.selectedRecipe) return;
     const recipe = craftingStore.selectedRecipe;
-    const qty = craftingStore.craftQuantity;
-    const n = Math.max(1, repeatCount);
+    const count = clampedCount;
+    const n = clampedRepeat;
     for (let i = 0; i < n; i++) {
       const label = n > 1
-        ? `Craft ${recipe.name} x${qty} [${i + 1}/${n}]`
-        : `Craft ${recipe.name} x${qty}`;
-      actionQueueStore.enqueue(label, () => ws.craft(recipe.id, qty));
+        ? `Craft ${recipe.name} ×${count} [${i + 1}/${n}]`
+        : `Craft ${recipe.name} ×${count}`;
+      actionQueueStore.enqueue(label, () => ws.craft(recipe.id, count));
     }
   }
 
@@ -199,18 +206,28 @@
           <p class="recipe-desc">{recipe.description}</p>
         {/if}
 
-        <p class="tab-section-title" style="margin-top:12px">Inputs</p>
+        <p class="tab-section-title" style="margin-top:12px">
+          Inputs
+          {#if clampedRepeat > 1}
+            <span class="total-hint">(×{clampedCount} × {clampedRepeat}回 = {totalMultiplier}倍)</span>
+          {:else if clampedCount > 1}
+            <span class="total-hint">(×{clampedCount})</span>
+          {/if}
+        </p>
         <div class="materials">
           {#each recipe.inputs ?? [] as input}
-            {@const needed = input.quantity * craftingStore.craftQuantity}
-            {@const have = hasMaterial(input.item_id, needed)}
+            {@const needed = input.quantity * totalMultiplier}
+            {@const neededPerAction = input.quantity * clampedCount}
+            {@const have = hasMaterial(input.item_id, neededPerAction)}
             {@const qty = getCargoQty(input.item_id)}
             <div class="material-row" class:ok={have} class:missing={!have}>
               <span class="mat-name">{formatItemId(input.item_id)}</span>
               <span class="mat-qty mono">
                 {qty}/{needed}
-                {#if have}
+                {#if qty >= needed}
                   <span class="ok-badge">✓</span>
+                {:else if have}
+                  <span class="ok-badge">~</span>
                 {:else}
                   <span class="missing-badge">-{needed - qty}</span>
                 {/if}
@@ -224,7 +241,7 @@
           <div class="output-row">
             <span class="mat-name">{formatItemId(output.item_id)}</span>
             <span class="mat-qty mono output-qty">
-              × {output.quantity * craftingStore.craftQuantity}
+              × {output.quantity * totalMultiplier}
               {#if output.quality_mod}
                 <span class="quality-badge">Q</span>
               {/if}
@@ -260,34 +277,33 @@
         </div>
 
         <div class="craft-controls">
-          <Textfield
-            bind:value={craftingStore.craftQuantity}
-            type="number"
-            label="Qty"
-            variant="outlined"
-            style="width:72px"
-            input$min="1"
-          />
-
+          <div class="count-field">
+            <label class="field-label">Count</label>
+            <input
+              type="number"
+              class="repeat-input"
+              min="1"
+              max="10"
+              bind:value={craftingStore.craftCount}
+            />
+          </div>
+          <div class="count-field">
+            <label class="field-label">Repeat</label>
+            <input
+              type="number"
+              class="repeat-input"
+              min="1"
+              max="999"
+              bind:value={repeatCount}
+            />
+          </div>
           <Button
             variant="raised"
             onclick={doCraft}
             disabled={!canCraft(recipe)}
             style="flex:1; --mdc-theme-primary:#7c4dff"
           >
-            <Label>⚒ Craft</Label>
-          </Button>
-        </div>
-
-        <div class="repeat-row">
-          <input type="number" class="repeat-input" min="1" max="999" bind:value={repeatCount} />
-          <Button
-            variant="outlined"
-            onclick={doCraft}
-            disabled={!canCraft(recipe)}
-            style="flex:1"
-          >
-            <Label>×{repeatCount} Craft</Label>
+            <Label>⚒ Craft ×{clampedCount}{clampedRepeat > 1 ? ` (${clampedRepeat}回)` : ''}</Label>
           </Button>
         </div>
 
@@ -554,23 +570,35 @@
   .stat-icon { font-size: 14px; color: #546e7a; }
   .stat-sub { font-size: 0.6rem; color: #546e7a; }
 
+  .total-hint {
+    font-size: 0.6rem;
+    color: #546e7a;
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
   .craft-controls {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     margin-top: 16px;
   }
 
-  .repeat-row {
+  .count-field {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .field-label {
+    font-size: 0.6rem;
+    color: #546e7a;
+    letter-spacing: 0.05em;
   }
 
   .repeat-input {
     width: 60px;
-    padding: 4px 6px;
+    padding: 6px 6px;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(79,195,247,0.2);
     border-radius: 4px;

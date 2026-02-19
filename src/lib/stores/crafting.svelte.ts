@@ -3,7 +3,7 @@ import type { Recipe } from '$lib/types/game';
 class CraftingStore {
   recipes = $state<Recipe[]>([]);
   selectedRecipe = $state<Recipe | null>(null);
-  craftQuantity = $state(1);
+  craftCount = $state(1);
   lastResult = $state<string | null>(null);
 
   /** Accept the Record<id, Recipe> format from get_recipes and convert to array */
@@ -22,7 +22,7 @@ class CraftingStore {
 
   selectRecipe(recipe: Recipe | null) {
     this.selectedRecipe = recipe;
-    this.craftQuantity = 1;
+    this.craftCount = 1;
   }
 
   setLastResult(msg: string) {
