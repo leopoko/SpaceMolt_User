@@ -195,6 +195,11 @@ class WebSocketService {
         if (systemStore.travel.in_progress) {
           systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
         }
+        // Stop action queue on error (e.g. mine no_resources)
+        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+          eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
+          actionQueueStore.clear();
+        }
         if (!authStore.isLoggedIn) {
           authStore.loginError = errMsg;
         }
@@ -338,6 +343,11 @@ class WebSocketService {
           craftingStore.setLastResult(errMsg);
         }
         eventsStore.add({ type: 'error', message: errMsg });
+        // Stop action queue on action failure
+        if (actionQueueStore.currentAction || actionQueueStore.items.length > 0) {
+          eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
+          actionQueueStore.clear();
+        }
         break;
       }
 

@@ -53,9 +53,9 @@
     const cy = (minY + maxY) / 2;
     const spanX = maxX - minX;
     const spanY = maxY - minY;
-    // Use the larger span to keep square coordinate space, add minimal padding
+    // Use the larger span to keep square coordinate space, add padding
     const span = Math.max(spanX, spanY, 0.5);
-    const pad = span * 0.08;
+    const pad = span * 0.25;
     const half = span / 2 + pad;
 
     return {

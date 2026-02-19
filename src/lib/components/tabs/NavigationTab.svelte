@@ -11,8 +11,8 @@
 
   let nearbyOpen = $state(false);
 
-  // Walk the action queue to compute effective dock state.
-  // Start from actual dock state, then flip for each queued Dock/Undock in order.
+  // Walk the action queue to compute effective dock state and effective POI.
+  // Start from actual state, then flip for each queued Dock/Undock/Travel in order.
   let effectivelyDocked = $derived.by(() => {
     let docked = playerStore.isDocked;
     for (const item of actionQueueStore.items) {
@@ -20,6 +20,20 @@
       else if (item.label.startsWith('Dock @')) docked = true;
     }
     return docked;
+  });
+
+  // Track where the player will effectively be after all queued travels.
+  let effectivePoiId = $derived.by(() => {
+    let poiId = playerStore.poi_id;
+    for (const item of actionQueueStore.items) {
+      for (const poi of systemStore.pois) {
+        if (item.label === `Travel → ${poi.name}`) {
+          poiId = poi.id;
+          break;
+        }
+      }
+    }
+    return poiId;
   });
 
   const secColor: Record<string, string> = {
@@ -117,13 +131,12 @@
                   </div>
                 </div>
                 <div class="poi-btns">
-                  {#if isHere && playerStore.isDocked}
-                    <!-- Player is docked here: show Undock -->
+                  {#if isHere && playerStore.isDocked && effectivelyDocked}
+                    <!-- Physically docked here and no Undock queued: show Undock -->
                     <Button variant="outlined" dense onclick={doUndock}>
                       <Label>Undock</Label>
                     </Button>
-                  {/if}
-                  {#if !(isHere && playerStore.isDocked)}
+                  {:else}
                     <!-- Travel to any POI -->
                     <Button
                       variant="outlined"
@@ -133,12 +146,12 @@
                     >
                       <Label>Travel</Label>
                     </Button>
-                    <!-- Dock only available for station-type POIs -->
+                    <!-- Dock: only at effective POI (current or last queued travel destination) -->
                     {#if poi.type === 'station'}
                       <Button
                         variant="outlined"
                         dense
-                        disabled={effectivelyDocked}
+                        disabled={effectivelyDocked || effectivePoiId !== poi.id}
                         onclick={() => doDock(poi.id, poi.name)}
                       >
                         <Label>Dock</Label>
