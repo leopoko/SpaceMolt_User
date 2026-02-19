@@ -94,31 +94,34 @@ body {
   overflow-y: auto;
 }
 
-/* ---- Bottom panel (event log + chat + action queue) ---- */
+/* ---- Bottom panel (event log + handles + chat + action queue + map) ---- */
 .bottom-panel {
   display: grid;
-  grid-template-columns: 1fr 320px 220px;
-  gap: 8px;
+  /* grid-template-columns and height set dynamically via inline style */
+  gap: 0;
   padding: 8px 16px;
-  height: 200px;
   background: rgba(4, 8, 18, 0.9);
-  border-top: 1px solid var(--space-border);
+  flex-shrink: 0;
 }
 
 @media (max-width: 900px) {
   .bottom-panel {
-    grid-template-columns: 1fr 220px;
-    height: 230px;
+    /* Collapse to EventLog + handle + Chat only */
+    grid-template-columns: 1fr 4px 1fr !important;
   }
-  .bottom-panel > :last-child {
+  /* Hide AQ handle, AQ, map handle, map */
+  .bottom-panel > :nth-child(n+4) {
     display: none;
   }
 }
 
 @media (max-width: 600px) {
   .bottom-panel {
-    grid-template-columns: 1fr;
-    height: 300px;
+    grid-template-columns: 1fr !important;
+  }
+  /* Show only EventLog */
+  .bottom-panel > :nth-child(n+2) {
+    display: none;
   }
 }
 
@@ -160,6 +163,7 @@ body {
 .event-trade  { color: #66bb6a; }
 .event-nav    { color: #42a5f5; }
 .event-system { color: #ab47bc; }
+.event-chat   { color: #80cbc4; }
 .event-error  { color: #ef5350; }
 .event-info   { color: #78909c; }
 

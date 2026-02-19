@@ -7,7 +7,7 @@
 export type SecurityLevel = 'high' | 'medium' | 'low' | 'null';
 export type PlayerStatus = 'active' | 'docked' | 'dead' | 'traveling';
 export type EventType = 'combat' | 'trade' | 'nav' | 'system' | 'chat' | 'error' | 'info';
-export type ChatChannel = 'global' | 'faction' | 'local' | 'system';
+export type ChatChannel = 'global' | 'faction' | 'local' | 'system' | 'private';
 export type MissionStatus = 'available' | 'active' | 'complete' | 'failed';
 export type OrderType = 'buy' | 'sell';
 
@@ -532,7 +532,11 @@ export interface ChatMessage {
   message: string;
   timestamp: number;
   channel: ChatChannel;
+  target_id?: string;
 }
+
+/** View filter for chat panel – 'all' shows every channel */
+export type ChatViewFilter = ChatChannel | 'all';
 
 export interface EventLogEntry {
   id: string;

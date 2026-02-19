@@ -4,6 +4,7 @@
   import { systemStore } from '$lib/stores/system.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
+  import { chatStore } from '$lib/stores/chat.svelte';
 
   let selectedTargetId = $state<string | null>(null);
   let filterText = $state('');
@@ -21,6 +22,12 @@
 
   function selectTarget(targetId: string) {
     selectedTargetId = selectedTargetId === targetId ? null : targetId;
+  }
+
+  function openPM(e: Event, username: string) {
+    e.stopPropagation();
+    chatStore.privateTarget = username;
+    chatStore.setFilter('private');
   }
 
   function formatTick(tick: number): string {
@@ -161,6 +168,14 @@
                 >
                   <span class="material-icons">gps_fixed</span>
                   ATK
+                </button>
+                <button
+                  class="action-btn pm-btn"
+                  onclick={(e) => openPM(e, target.username)}
+                  title="PM {target.username}"
+                >
+                  <span class="material-icons">mail</span>
+                  PM
                 </button>
               </div>
             </div>
@@ -465,6 +480,9 @@
 
   .attack-btn { color: #ef5350; border-color: rgba(244,67,54,0.3); }
   .attack-btn:hover { background: rgba(244,67,54,0.12); border-color: rgba(244,67,54,0.6); }
+
+  .pm-btn { color: #ef9a9a; border-color: rgba(239,154,154,0.3); }
+  .pm-btn:hover { background: rgba(239,154,154,0.12); border-color: rgba(239,154,154,0.6); }
 
   .hp-bar-text { font-size: 0.68rem; color: #4caf50; }
 
