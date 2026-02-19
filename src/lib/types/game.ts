@@ -252,27 +252,60 @@ export interface TravelState {
 
 // ---- Base / Station ----
 
+export interface BaseServices {
+  cloning?: boolean;
+  crafting?: boolean;
+  insurance?: boolean;
+  market?: boolean;
+  missions?: boolean;
+  refuel?: boolean;
+  repair?: boolean;
+  shipyard?: boolean;
+  storage?: boolean;
+}
+
+export interface BaseCondition {
+  total_service_infra?: number;
+  satisfied_count?: number;
+  satisfaction_pct?: number;
+  condition?: string;
+  condition_text?: string;
+  // Legacy fields
+  health?: number;
+  max_health?: number;
+  status?: string;
+}
+
 export interface BaseInfo {
   id: string;
+  poi_id?: string;
   name: string;
-  type: 'outpost' | 'station' | 'fortress' | 'shipyard';
-  owner_id: string | null;
-  owner_name: string | null;
-  faction_id: string | null;
-  services: string[];
-  hull: number;
-  max_hull: number;
+  type: 'outpost' | 'station' | 'fortress' | 'shipyard' | string;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  faction_id?: string | null;
+  services: BaseServices | string[];
+  hull?: number;
+  max_hull?: number;
+  defense_level?: number;
+  public_access?: boolean;
+  description?: string;
+  empire?: string;
+  facilities?: string[];
+  has_drones?: boolean;
+  condition?: BaseCondition;
 }
 
 export interface StorageData {
-  station_id: string;
-  station_name: string;
+  station_id?: string;
+  station_name?: string;
+  base_id?: string;
   items: CargoItem[];
   credits: number;
-  capacity: number;
-  capacity_used: number;
-  ships: Ship[];
-  gifts: StorageGift[];
+  capacity?: number;
+  capacity_used?: number;
+  ships?: Ship[];
+  gifts?: StorageGift[];
 }
 
 export interface StorageGift {

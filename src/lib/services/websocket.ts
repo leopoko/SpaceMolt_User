@@ -2,7 +2,8 @@ import type {
   WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
   CombatEvent, ScanResult, TargetScanResult, MarketData, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry,
-  CatalogType, CatalogResponse
+  CatalogType, CatalogResponse,
+  BaseInfo, BaseCondition
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -287,6 +288,24 @@ class WebSocketService {
           } else {
             eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
           }
+        } else if (cmd === 'deposit_credits' && result) {
+          const amount = (result.amount as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Deposited ₡${amount.toLocaleString()} to station` });
+          this.viewStorage();
+        } else if (cmd === 'withdraw_credits' && result) {
+          const amount = (result.amount as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Withdrew ₡${amount.toLocaleString()} from station` });
+          this.viewStorage();
+        } else if (cmd === 'deposit_items' && result) {
+          const itemId = (result.item_id as string) ?? '';
+          const qty = (result.quantity as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Deposited ${qty}x ${itemId} to station` });
+          this.viewStorage();
+        } else if (cmd === 'withdraw_items' && result) {
+          const itemId = (result.item_id as string) ?? '';
+          const qty = (result.quantity as number) ?? 0;
+          eventsStore.add({ type: 'trade', message: `Withdrew ${qty}x ${itemId} from station` });
+          this.viewStorage();
         } else {
           // Generic action_result: log if there's useful info
           const action = result?.action as string ?? cmd ?? '';
@@ -336,12 +355,16 @@ class WebSocketService {
           poi_id: pl.station_id ?? null,
           docked_at_base: pl.station_id ?? null
         });
+        // Auto-load station info and storage when docked
+        this.getBase();
+        this.viewStorage();
         break;
       }
 
       case 'undocked': {
         eventsStore.add({ type: 'nav', message: 'Undocked' });
         playerStore.update({ status: 'active', poi_id: null, docked_at_base: null });
+        baseStore.reset();
         break;
       }
 
@@ -534,6 +557,34 @@ class WebSocketService {
           }
         } else if (isCatalogResponse(pl)) {
           catalogStore.handleResponse(pl as unknown as CatalogResponse);
+        } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
+          // Query response: view_storage — detected by action field or by base_id+items presence
+          const raw = msg.payload as Record<string, unknown>;
+          const storageData: StorageData = {
+            station_id: (raw.station_id as string) ?? (raw.base_id as string) ?? '',
+            base_id: (raw.base_id as string) ?? (raw.station_id as string) ?? '',
+            station_name: (raw.station_name as string) ?? '',
+            items: (raw.items as StorageData['items']) ?? [],
+            credits: (raw.credits as number) ?? 0,
+            capacity: (raw.capacity as number) ?? undefined,
+            capacity_used: (raw.capacity_used as number) ?? undefined,
+            ships: (raw.ships as StorageData['ships']) ?? [],
+            gifts: (raw.gifts as StorageData['gifts']) ?? [],
+          };
+          baseStore.setStorage(storageData);
+        } else if (pl.action === 'get_base' || (msg.payload as Record<string, unknown>)?.base) {
+          // Query response: get_base — detected by action field or by base field presence
+          const raw = msg.payload as Record<string, unknown>;
+          const base = raw.base as BaseInfo;
+          const condition = raw.condition as BaseCondition | undefined;
+          if (base && base.name) {
+            baseStore.setBase(base, condition);
+          }
+        } else if (pl.pending) {
+          // Mutation accepted, will execute on next tick
+          if (pl.message) {
+            eventsStore.add({ type: 'info', message: pl.message });
+          }
         } else if (pl.message) {
           eventsStore.add({ type: 'info', message: pl.message });
         }
@@ -655,16 +706,18 @@ class WebSocketService {
     this.send({ type: 'craft', payload: { recipe: recipeId, quantity } });
   }
 
-  // ---- Storage ----
+  // ---- Storage / Base ----
 
-  viewStorage(stationId: string) { this.send({ type: 'view_storage', payload: { station: stationId } }); }
+  getBase() { this.send({ type: 'get_base' }); }
 
-  depositItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'deposit_items', payload: { items } });
+  viewStorage() { this.send({ type: 'view_storage' }); }
+
+  depositItems(itemId: string, quantity: number) {
+    this.send({ type: 'deposit_items', payload: { item_id: itemId, quantity } });
   }
 
-  withdrawItems(items: Array<{ id: string; quantity: number }>) {
-    this.send({ type: 'withdraw_items', payload: { items } });
+  withdrawItems(itemId: string, quantity: number) {
+    this.send({ type: 'withdraw_items', payload: { item_id: itemId, quantity } });
   }
 
   depositCredits(amount: number) { this.send({ type: 'deposit_credits', payload: { amount } }); }
