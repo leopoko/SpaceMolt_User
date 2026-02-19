@@ -7,8 +7,18 @@ class CraftingStore {
   craftQuantity = $state(1);
   lastResult = $state<string | null>(null);
 
-  setRecipes(recipes: Recipe[]) {
-    this.recipes = recipes;
+  /** Accept the Record<id, Recipe> format from get_recipes and convert to array */
+  setRecipes(recipesMap: Record<string, Recipe>) {
+    this.recipes = Object.values(recipesMap);
+  }
+
+  /** Sorted unique category list derived from loaded recipes */
+  get categories(): string[] {
+    const cats = new Set<string>();
+    for (const r of this.recipes) {
+      if (r.category) cats.add(r.category);
+    }
+    return [...cats].sort();
   }
 
   selectRecipe(recipe: Recipe | null) {

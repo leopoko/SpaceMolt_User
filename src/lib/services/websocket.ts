@@ -476,8 +476,10 @@ class WebSocketService {
       }
 
       case 'recipes': {
-        const pl = p<{ recipes?: Recipe[] }>(msg);
-        craftingStore.setRecipes(pl.recipes ?? []);
+        const pl = p<{ recipes?: Record<string, Recipe> }>(msg);
+        if (pl.recipes && typeof pl.recipes === 'object') {
+          craftingStore.setRecipes(pl.recipes);
+        }
         break;
       }
 
@@ -565,6 +567,8 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
+        } else if ((pl as Record<string, unknown>).recipes && typeof (pl as Record<string, unknown>).recipes === 'object' && !Array.isArray((pl as Record<string, unknown>).recipes)) {
+          craftingStore.setRecipes((pl as Record<string, unknown>).recipes as Record<string, Recipe>);
         } else if (isCatalogResponse(pl)) {
           catalogStore.handleResponse(pl as unknown as CatalogResponse);
         } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
