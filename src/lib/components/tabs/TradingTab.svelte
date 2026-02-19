@@ -93,8 +93,8 @@
   function loadMarket() {
     const stationId = playerStore.dockedAt ?? playerStore.poi_id ?? systemStore.stations[0]?.id;
     if (stationId) {
+      // view_orders is automatically chained after view_market response arrives
       ws.viewMarket(stationId);
-      ws.viewOrders();
     }
   }
 

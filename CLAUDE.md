@@ -563,6 +563,24 @@ EventLog 下部の `›` プロンプトから手動コマンドを入力でき�
    → 文字列の `"null"` = UNREGULATED（JavaScriptの `null` と異なる）
    → `secLabel: { null: 'UNREGULATED' }` で対処
 
+7. **Queryコマンドを同時に複数送信しない**
+   → サーバーは複数のQueryレスポンスを1つのWebSocketフレームに連結して返す場合がある
+   → 連結された JSON（例: `{...}{...}`）は `JSON.parse()` に失敗する
+   → **解決策:** レスポンスを受信してから次のQueryを送信する（チェーン方式）
+   → 例: `view_market` のレスポンスが来たら `view_orders` を送信する
+   ```typescript
+   // ✗ NG: 同時送信 → レスポンスが連結されてパース失敗
+   ws.viewMarket(stationId);
+   ws.viewOrders();
+
+   // ✓ OK: レスポンス受信後にチェーン
+   // websocket.ts の ok ハンドラ内:
+   if (pl.action === 'view_market') {
+     marketStore.setData(...);
+     this.viewOrders();  // view_market完了後に送信
+   }
+   ```
+
 ---
 
 ## Git ブランチ・コミット規約
