@@ -3,7 +3,9 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
   import { contactsStore } from '$lib/stores/contacts.svelte';
+  import { tradeStore } from '$lib/stores/trade.svelte';
   import { ws } from '$lib/services/websocket';
+  import TradePanel from './TradePanel.svelte';
 
   let message = $state('');
   let showSuggestions = $state(false);
@@ -86,6 +88,11 @@
         onkeydown={(e) => e.key === 'Enter' && selectContact(contact.username)}
       >
         <span class="contact-name">{contact.username}</span>
+        {#if tradeStore.getOffersFrom(contact.username).length > 0}
+          <span class="trade-badge" title="Trade offer">
+            <span class="material-icons" style="font-size:12px">swap_horiz</span>
+          </span>
+        {/if}
         <button
           class="contact-remove"
           onclick={(e) => removeContact(e, contact.username)}
@@ -138,6 +145,11 @@
         <div class="empty">{chatStore.privateTarget ? 'No messages' : 'Select a contact or enter a name'}</div>
       {/each}
     </div>
+
+    <!-- Trade panel (between messages and input) -->
+    {#if chatStore.privateTarget.trim()}
+      <TradePanel targetUsername={chatStore.privateTarget.trim()} />
+    {/if}
 
     <!-- Send -->
     <div class="input-row">
@@ -211,6 +223,19 @@
     white-space: nowrap;
     flex: 1;
     min-width: 0;
+  }
+
+  .trade-badge {
+    color: #ffd700;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    animation: pulse-trade 1.5s infinite;
+  }
+
+  @keyframes pulse-trade {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
 
   .contact-remove {
