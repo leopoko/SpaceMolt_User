@@ -115,6 +115,55 @@
   // Scale for stroke widths relative to coordinate system
   let sw = $derived(mapMetrics.scale * 0.008);
   let s = $derived(mapMetrics.scale);
+
+  // Deterministic pseudo-random helper (returns 0–1)
+  function hash(a: number, b: number): number {
+    const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return h - Math.floor(h);
+  }
+
+  // Pre-compute scattered rocks for asteroid belts along their orbital path.
+  // Only generates rocks within the visible viewport.
+  let beltRocks = $derived.by(() => {
+    const result = new Map<string, { x: number; y: number; r: number; opacity: number }[]>();
+    const { vx, vy, vw, vh } = mapMetrics;
+    const margin = s * 0.04;
+
+    for (const poi of mappedPois) {
+      if (poi.type !== 'asteroid_belt' && poi.type !== 'asteroid') continue;
+      const px = poi.position!.x;
+      const py = poi.position!.y;
+      const orbitR = Math.sqrt(px * px + py * py);
+      if (orbitR < 0.01) { result.set(poi.id, []); continue; }
+
+      const rockCount = 80;
+      const rocks: { x: number; y: number; r: number; opacity: number }[] = [];
+      const baseR = s * 0.007;
+
+      for (let i = 0; i < rockCount; i++) {
+        const angle = (i / rockCount) * Math.PI * 2;
+        const radialVar = hash(i, orbitR) * 0.06 - 0.03; // ±3% radial jitter
+        const r = orbitR * (1 + radialVar);
+        // Slight angular jitter so rocks aren't perfectly evenly spaced
+        const aJitter = (hash(i * 3.1, orbitR * 7.3) - 0.5) * (Math.PI * 2 / rockCount) * 0.6;
+        const rx = r * Math.cos(angle + aJitter);
+        const ry = r * Math.sin(angle + aJitter);
+
+        // Viewport culling
+        if (rx < vx - margin || rx > vx + vw + margin ||
+            ry < vy - margin || ry > vy + vh + margin) continue;
+
+        const sizeFactor = 0.4 + hash(i * 43.3, orbitR * 17.1) * 0.6;
+        const opacity = 0.4 + hash(i * 73.7, orbitR * 53.3) * 0.5;
+
+        rocks.push({ x: rx, y: ry, r: baseR * sizeFactor, opacity });
+      }
+
+      result.set(poi.id, rocks);
+    }
+
+    return result;
+  });
 </script>
 
 <div class="system-map-container">
@@ -338,18 +387,11 @@
           stroke="#e1f5fe" stroke-width={sw * 0.25} opacity="0.4" />
 
       {:else if poi.type === 'asteroid_belt' || poi.type === 'asteroid'}
-        <!-- Asteroid belt: scattered small rocks -->
-        {@const ar = dotR * 0.3}
-        <circle cx={x - ar * 1.2} cy={y - ar * 0.5} r={ar * 0.8}
-          fill={isHere ? '#4caf50' : '#ff9800'} opacity="0.8" />
-        <circle cx={x + ar * 0.8} cy={y - ar * 0.8} r={ar * 0.6}
-          fill={isHere ? '#66bb6a' : '#ffb74d'} opacity="0.7" />
-        <circle cx={x + ar * 1.5} cy={y + ar * 0.3} r={ar * 0.7}
-          fill={isHere ? '#4caf50' : '#e65100'} opacity="0.8" />
-        <circle cx={x - ar * 0.5} cy={y + ar * 1.0} r={ar * 0.5}
-          fill={isHere ? '#81c784' : '#ff9800'} opacity="0.6" />
-        <circle cx={x + ar * 0.2} cy={y + ar * 0.2} r={ar * 0.9}
-          fill={isHere ? '#4caf50' : '#bf360c'} opacity="0.7" />
+        <!-- Asteroid belt: rocks scattered along orbital path -->
+        {#each beltRocks.get(poi.id) ?? [] as rock}
+          <circle cx={rock.x} cy={rock.y} r={rock.r}
+            fill={isHere ? '#4caf50' : '#ff9800'} opacity={rock.opacity} />
+        {/each}
 
       {:else}
         <!-- Default: simple circle -->
