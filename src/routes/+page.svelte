@@ -16,6 +16,7 @@
   import CraftingTab from '$lib/components/tabs/CraftingTab.svelte';
   import CommunityTab from '$lib/components/tabs/CommunityTab.svelte';
   import BaseTab from '$lib/components/tabs/BaseTab.svelte';
+  import ExplorerTab from '$lib/components/tabs/ExplorerTab.svelte';
   import InfoTab from '$lib/components/tabs/InfoTab.svelte';
   import SettingsTab from '$lib/components/tabs/SettingsTab.svelte';
 
@@ -214,6 +215,8 @@
         <CommunityTab />
       {:else if uiStore.activeTab?.label === 'Base'}
         <BaseTab />
+      {:else if uiStore.activeTab?.label === 'Explorer'}
+        <ExplorerTab />
       {:else if uiStore.activeTab?.label === 'Info'}
         <InfoTab />
       {:else if uiStore.activeTab?.label === 'Settings'}

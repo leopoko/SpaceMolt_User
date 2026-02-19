@@ -19,6 +19,7 @@ export { forumStore } from './forum.svelte';
 export { missionStore } from './mission.svelte';
 export { loopStore } from './loop.svelte';
 export { scavengerStore } from './scavenger.svelte';
+export { explorerStore } from './explorer.svelte';
 export { bookmarkStore } from './bookmark.svelte';
 export { storageMemoStore } from './storageMemo.svelte';
 export { uiStore, TABS } from './ui.svelte';
