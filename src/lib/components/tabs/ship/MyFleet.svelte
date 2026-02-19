@@ -5,6 +5,11 @@
   import { shipStore } from '$lib/stores/ship.svelte';
   import { ws } from '$lib/services/websocket';
 
+  // Auto-refresh fleet when this sub-tab mounts
+  $effect(() => {
+    ws.listShips();
+  });
+
   function switchShip(shipId: string) {
     ws.switchShip(shipId);
   }

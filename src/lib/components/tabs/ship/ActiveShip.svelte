@@ -39,6 +39,28 @@
         <span class="mono dim">PWR: {shipStore.powerUsed}/{shipStore.powerCapacity}</span>
       </div>
 
+      {#if shipStore.cargo.length > 0}
+        <p class="tab-section-title" style="margin-top:14px">Cargo</p>
+        <table class="cargo-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="num">Qty</th>
+              <th class="num">Vol</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each shipStore.cargo as item}
+              <tr>
+                <td>{item.name ?? item.item_id}</td>
+                <td class="num mono">{item.quantity}</td>
+                <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+
       {#if shipStore.moduleData.length > 0}
         <p class="tab-section-title" style="margin-top:14px">Modules</p>
         <div class="module-list">
@@ -106,6 +128,36 @@
   .mod-type { font-size: 0.65rem; color: #4a6070; }
   .mod-wear { font-size: 0.65rem; color: #607d8b; }
   .mod-wear.warn { color: #ff7043; }
+
+  .cargo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.73rem;
+  }
+
+  .cargo-table thead { display: table; width: 100%; }
+  .cargo-table tbody { display: block; max-height: 160px; overflow-y: auto; }
+  .cargo-table tr { display: table; width: 100%; table-layout: fixed; }
+
+  .cargo-table th {
+    text-align: left;
+    font-size: 0.62rem;
+    color: #37474f;
+    padding: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .cargo-table th.num { text-align: right; }
+
+  .cargo-table td {
+    padding: 4px;
+    color: #90a4ae;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .num { text-align: right; }
 
   .empty-hint {
     font-size: 0.75rem;

@@ -5,6 +5,13 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { ws } from '$lib/services/websocket';
 
+  // Auto-refresh catalog when this sub-tab mounts (only when docked)
+  $effect(() => {
+    if (playerStore.isDocked) {
+      ws.getShipCatalog();
+    }
+  });
+
   function buyShip(shipType: string) {
     if (confirm(`Buy ${shipType}?`)) ws.buyShip(shipType);
   }
