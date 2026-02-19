@@ -8,8 +8,16 @@
   import { baseStore } from '$lib/stores/base.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
   import { ws } from '$lib/services/websocket';
   import type { MarketItem, MarketOrderEntry } from '$lib/types/game';
+
+  // Auto-refresh market when Trading tab is opened while docked
+  $effect(() => {
+    if (uiStore.activeTab.label === 'Trading' && playerStore.isDocked) {
+      loadMarket();
+    }
+  });
 
   // --- Expand state for item rows ---
   let expandedItems = $state<Set<string>>(new Set());

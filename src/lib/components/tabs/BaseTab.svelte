@@ -101,6 +101,25 @@
     actionQueueStore.enqueue(`Deposit ${qty}x ${itemId}`, () => ws.depositItems(itemId, qty));
   }
 
+  /** Withdraw a specific stored item (all quantity) */
+  function doWithdrawSelected(itemId: string) {
+    const stItem = baseStore.items.find(i => i.item_id === itemId);
+    if (!stItem || stItem.quantity <= 0) return;
+    const qty = stItem.quantity;
+    actionQueueStore.enqueue(`Withdraw ${qty}x ${itemId}`, () => ws.withdrawItems(itemId, qty));
+  }
+
+  /** Withdraw ALL stored items (each as a separate queue action) */
+  function doWithdrawAllStorage() {
+    const items = baseStore.items.filter(i => i.quantity > 0);
+    if (items.length === 0) return;
+    for (const s of items) {
+      const itemId = s.item_id;
+      const qty = s.quantity;
+      actionQueueStore.enqueue(`Withdraw ${qty}x ${itemId}`, () => ws.withdrawItems(itemId, qty));
+    }
+  }
+
   /** Deposit ALL cargo items (each as a separate queue action) */
   function doDepositAllCargo() {
     const items = shipStore.cargo.filter(c => c.quantity > 0);
@@ -238,7 +257,14 @@
     <!-- Storage & Cargo items -->
     <Card class="space-card">
       <Content>
-        <p class="tab-section-title">Stored Items</p>
+        <div class="cargo-header">
+          <p class="tab-section-title" style="margin:0">Stored Items</p>
+          {#if baseStore.items.length > 0}
+            <button class="withdraw-all-btn" onclick={doWithdrawAllStorage} title="Withdraw all stored items">
+              Withdraw All ↓
+            </button>
+          {/if}
+        </div>
 
         {#if baseStore.items.length > 0}
           <table class="storage-table">
@@ -247,6 +273,7 @@
                 <th>Item</th>
                 <th class="num">Qty</th>
                 <th class="num">Volume</th>
+                <th style="width:50px"></th>
               </tr>
             </thead>
             <tbody>
@@ -259,6 +286,11 @@
                   <td>{item.name ?? item.item_id}</td>
                   <td class="num mono">{item.quantity}</td>
                   <td class="num mono">{(item.quantity * (item.volume ?? 1)).toFixed(1)}</td>
+                  <td>
+                    <button class="withdraw-btn" onclick={(e) => { e.stopPropagation(); doWithdrawSelected(item.item_id); }} title="Withdraw all {item.item_id}">
+                      ↓
+                    </button>
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -360,7 +392,7 @@
 
         <div class="type-toggle" style="margin:12px 0">
           <button class="toggle-btn" class:active={creditMode === 'deposit'} onclick={() => (creditMode = 'deposit')}>
-            Deposit ↑
+            Deposit ↓
           </button>
           <button class="toggle-btn" class:active={creditMode === 'withdraw'} onclick={() => (creditMode = 'withdraw')}>
             Withdraw ↓
@@ -552,6 +584,30 @@
     transition: all 0.15s;
   }
   .deposit-btn:hover { background: rgba(79,195,247,0.1); }
+
+  .withdraw-all-btn {
+    background: none;
+    border: 1px solid rgba(255,152,0,0.3);
+    color: #ff9800;
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .withdraw-all-btn:hover { background: rgba(255,152,0,0.1); }
+
+  .withdraw-btn {
+    background: none;
+    border: 1px solid rgba(255,152,0,0.2);
+    color: #ff9800;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .withdraw-btn:hover { background: rgba(255,152,0,0.1); }
 
   .autocomplete-wrapper { position: relative; width: 100%; }
 
