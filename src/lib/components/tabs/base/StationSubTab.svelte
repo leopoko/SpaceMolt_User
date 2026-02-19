@@ -369,7 +369,7 @@
       <Content>
         <div class="cargo-header">
           <p class="tab-section-title" style="margin:0">Stored Items</p>
-          {#if baseStore.items.length > 0 || (hasPendingDock && !playerStore.isDocked)}
+          {#if baseStore.items.length > 0 || (hasPendingDock && !playerStore.isDocked) || actionQueueStore.recordingMode}
             <button class="withdraw-all-btn" onclick={doWithdrawAllStorage} title="Withdraw all stored items (iterative)">
               Withdraw All ↓
             </button>
@@ -411,7 +411,7 @@
           <p class="empty-hint">Loading storage...</p>
         {/if}
 
-        {#if shipStore.cargo.length > 0 || (hasPendingDock && !playerStore.isDocked)}
+        {#if shipStore.cargo.length > 0 || (hasPendingDock && !playerStore.isDocked) || actionQueueStore.recordingMode}
           <div class="cargo-header">
             <p class="tab-section-title" style="margin:0">Cargo (Ship)</p>
             <button class="deposit-all-btn" onclick={doDepositAllCargo} title="Deposit all cargo items (iterative)">

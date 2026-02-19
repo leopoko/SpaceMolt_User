@@ -23,6 +23,7 @@ import { catalogStore } from '$lib/stores/catalog.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
 import { missionStore } from '$lib/stores/mission.svelte';
 import { forumStore } from '$lib/stores/forum.svelte';
+import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 
 // All server messages use { type, payload: {...} }.
@@ -350,6 +351,11 @@ class WebSocketService {
           eventsStore.add({ type: 'info', message });
           if (result?.ship) shipStore.updateCurrent(result.ship as never);
           this.viewStorage();
+        } else if (cmd === 'survey_system') {
+          const message = (result?.message as string) ?? 'Survey complete';
+          eventsStore.add({ type: 'nav', message });
+          // Survey may reveal new POIs; refresh system data
+          this.getSystem();
         } else if (cmd === 'loot_wreck') {
           const message = (result?.message as string) ?? 'Loot collected';
           eventsStore.add({ type: 'info', message });
@@ -480,9 +486,19 @@ class WebSocketService {
       }
 
       case 'mining_yield': {
-        const pl = p<{ item?: string; quantity?: number; ship?: never }>(msg);
-        eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${pl.item ?? 'ore'}` });
+        const pl = p<{ resource_id?: string; resource_name?: string; item?: string; quantity?: number; ship?: never }>(msg);
+        const resourceName = pl.resource_name ?? pl.item ?? 'ore';
+        eventsStore.add({ type: 'info', message: `Mined ${pl.quantity ?? 0}x ${resourceName}` });
         if (pl.ship) shipStore.updateCurrent(pl.ship);
+        // Track mining yield in system memo and auto-save system data
+        const yieldSystemId = playerStore.system_id;
+        const yieldPoiId = playerStore.poi_id;
+        if (yieldSystemId && yieldPoiId && (pl.quantity ?? 0) > 0) {
+          if (!systemMemoStore.hasMemo(yieldSystemId)) {
+            systemMemoStore.save(systemStore.data);
+          }
+          systemMemoStore.addMiningYield(yieldSystemId, yieldPoiId, resourceName, pl.quantity!);
+        }
         break;
       }
 
@@ -920,6 +936,9 @@ class WebSocketService {
             connections,
           } as never);
 
+          // Auto-save system memo whenever we get system data
+          systemMemoStore.save(systemStore.data);
+
           // Also update currentPoi if provided
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
@@ -953,6 +972,22 @@ class WebSocketService {
             // Chain: get_base ok → view_storage (avoid concurrent queries)
             this.viewStorage();
           }
+        } else if (pl.action === 'jumped') {
+          // Jump completed (multi-tick jump)
+          const raw = msg.payload as Record<string, unknown>;
+          const dest = (raw.system as string) ?? '';
+          const destId = (raw.system_id as string) ?? '';
+          const fromSystem = (raw.from_system as string) ?? '';
+          const poiId = (raw.poi as string) ?? null;
+          systemStore.setTravel({ in_progress: false, destination_id: null, destination_name: null });
+          if (destId) {
+            playerStore.update({ current_system: destId } as never);
+          }
+          if (poiId) {
+            playerStore.update({ current_poi: poiId, poi_id: poiId } as never);
+          }
+          eventsStore.add({ type: 'nav', message: `Jumped to ${dest}${fromSystem ? ` (from ${fromSystem})` : ''}` });
+          this.getSystem();
         } else if (!pl.action && (msg.payload as Record<string, unknown>)?.player && (msg.payload as Record<string, unknown>)?.ship) {
           // get_status response: has player + ship at top level, no action field
           const raw = msg.payload as Record<string, unknown>;
@@ -1047,7 +1082,7 @@ class WebSocketService {
 
   jump(systemId: string, systemName?: string) {
     systemStore.setTravel({ in_progress: true, destination_id: systemId, destination_name: systemName ?? systemId, type: 'jump' });
-    this.send({ type: 'jump', payload: { system: systemId } });
+    this.send({ type: 'jump', payload: { target_system: systemId } });
   }
 
   dock(stationId: string) { this.send({ type: 'dock', payload: { station: stationId } }); }
@@ -1107,6 +1142,8 @@ class WebSocketService {
   // ---- Ship Services ----
 
   repair() { this.send({ type: 'repair' }); }
+
+  surveySystem() { this.send({ type: 'survey_system' }); }
 
   refuel(quantity?: number, itemId?: string) {
     const payload: Record<string, unknown> = {};

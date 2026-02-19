@@ -358,6 +358,27 @@ class LoopStore {
           opts,
         };
 
+      case 'repair':
+        return {
+          label: step.label,
+          execute: () => ws.repair(),
+          opts,
+        };
+
+      case 'refuel':
+        return {
+          label: step.label,
+          execute: () => ws.refuel(),
+          opts,
+        };
+
+      case 'survey_system':
+        return {
+          label: step.label,
+          execute: () => ws.surveySystem(),
+          opts,
+        };
+
       default:
         // Unknown command — log warning and no-op
         return {

@@ -7,6 +7,22 @@
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { ws } from '$lib/services/websocket';
 
+  function doRepair() {
+    actionQueueStore.enqueue('Repair', () => ws.repair(), {
+      command: { type: 'repair' }
+    });
+  }
+
+  function doRefuel() {
+    actionQueueStore.enqueue('Refuel', () => ws.refuel(), {
+      command: { type: 'refuel' }
+    });
+  }
+
+  let showServiceButtons = $derived(
+    playerStore.isDocked || actionQueueStore.recordingMode
+  );
+
   function uninstallModule(modId: string, modName: string) {
     actionQueueStore.enqueue(`Uninstall ${modName}`, () => ws.uninstallMod(modId));
   }
@@ -51,6 +67,17 @@
           <span class="mono dim">CPU: {shipStore.cpuUsed}/{shipStore.cpuCapacity}</span>
           <span class="mono dim">PWR: {shipStore.powerUsed}/{shipStore.powerCapacity}</span>
         </div>
+
+        {#if showServiceButtons}
+          <div class="service-buttons">
+            <button class="svc-btn repair-btn" onclick={doRepair} title="Repair ship">
+              <span class="material-icons" style="font-size:15px">build</span> Repair
+            </button>
+            <button class="svc-btn refuel-btn" onclick={doRefuel} title="Refuel ship">
+              <span class="material-icons" style="font-size:15px">local_gas_station</span> Refuel
+            </button>
+          </div>
+        {/if}
 
         <!-- Installed Modules -->
         {#if shipStore.moduleData.length > 0}
@@ -218,6 +245,39 @@
 
   .dim { color: #37474f; }
 
+  .service-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 4px;
+  }
+
+  .svc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    font-family: inherit;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid;
+    background: none;
+  }
+
+  .repair-btn {
+    color: #4caf50;
+    border-color: rgba(76,175,80,0.3);
+  }
+  .repair-btn:hover { background: rgba(76,175,80,0.1); }
+
+  .refuel-btn {
+    color: #ff9800;
+    border-color: rgba(255,152,0,0.3);
+  }
+  .refuel-btn:hover { background: rgba(255,152,0,0.1); }
+
   .module-count {
     font-size: 0.6rem;
     color: #546e7a;
@@ -226,6 +286,7 @@
     padding: 1px 6px;
     margin-left: 4px;
   }
+
 
   .module-list { display: flex; flex-direction: column; gap: 4px; }
 
