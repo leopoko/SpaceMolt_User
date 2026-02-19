@@ -39,10 +39,12 @@ class FactionStore {
   invitesLoading = $state(false);
 
   get name(): string { return this.data?.name ?? ''; }
+  get leaderName(): string { return this.data?.leader_username ?? this.data?.leader_name ?? ''; }
   get members() { return this.data?.members ?? []; }
   get wars() { return this.data?.wars ?? []; }
   get allies(): string[] { return this.data?.allies ?? []; }
   get credits(): number { return this.data?.credits ?? 0; }
+  get memberCount(): number { return this.data?.member_count ?? this.data?.members?.length ?? 0; }
 
   update(data: Faction) {
     this.data = data;

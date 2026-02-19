@@ -553,6 +553,17 @@ class WebSocketService {
 
       case 'ok': {
         const pl = p<{ action?: string; command?: string; message?: string; pending?: boolean; system?: Record<string, unknown>; poi?: Record<string, unknown>; base?: string; items?: MarketItem[]; orders?: MyOrder[]; faction_orders?: unknown[]; threads?: ForumThread[]; page?: number; total?: number; total_count?: number; per_page?: number; categories?: string[]; thread?: ForumThread; replies?: ForumReply[]; thread_id?: string; reply_id?: string; title?: string; factions?: unknown[]; invites?: unknown[]; faction_id?: string; faction?: Record<string, unknown> }>(msg);
+        // faction_info: payload has id + tag + name but no threads/factions/items
+        if (!pl.action && (pl as Record<string, unknown>).id && (pl as Record<string, unknown>).tag && !pl.threads && !pl.factions && !pl.items) {
+          const f = pl as unknown as Faction;
+          if (playerStore.faction_id && f.id === playerStore.faction_id) {
+            factionStore.update(f);
+          } else {
+            factionStore.setViewedFaction(f);
+          }
+          factionStore.viewedFactionLoading = false;
+          break;
+        }
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
           // Chain: request own orders after market data arrives

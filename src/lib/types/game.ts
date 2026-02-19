@@ -403,14 +403,26 @@ export interface Recipe {
 export interface Faction {
   id: string;
   name: string;
+  tag?: string;
   description: string;
+  charter?: string;
   leader_id: string;
-  leader_name: string;
-  members: FactionMember[];
-  wars: FactionWar[];
-  allies: string[];
-  credits: number;
-  standing: number;
+  leader_name?: string;      // legacy
+  leader_username?: string;  // actual API field
+  member_count?: number;
+  members?: FactionMember[];
+  wars?: FactionWar[];
+  allies?: string[];
+  credits?: number;
+  standing?: number;
+  owned_bases?: number;
+  primary_color?: string;
+  secondary_color?: string;
+  is_member?: boolean;
+  is_ally?: boolean;
+  is_enemy?: boolean;
+  at_war?: boolean;
+  created_at?: string;
 }
 
 export interface FactionMember {

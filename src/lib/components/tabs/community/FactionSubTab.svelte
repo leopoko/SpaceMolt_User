@@ -45,6 +45,8 @@
   }
 
   function viewFaction(factionId: string) {
+    factionStore.clearViewedFaction();
+    factionStore.viewedFactionLoading = true;
     ws.factionViewInfo(factionId);
     view = 'view-faction';
   }
@@ -125,11 +127,11 @@
           <div class="faction-stats">
             <div class="f-stat">
               <span class="f-label">Leader</span>
-              <span class="f-val">{factionStore.data.leader_name}</span>
+              <span class="f-val">{factionStore.leaderName}</span>
             </div>
             <div class="f-stat">
               <span class="f-label">Members</span>
-              <span class="f-val mono">{factionStore.members.length}</span>
+              <span class="f-val mono">{factionStore.memberCount}</span>
             </div>
             <div class="f-stat">
               <span class="f-label">Faction Credits</span>
@@ -158,7 +160,7 @@
       <!-- Members -->
       <Card class="space-card">
         <Content>
-          <p class="tab-section-title">Members ({factionStore.members.length})</p>
+          <p class="tab-section-title">Members ({factionStore.memberCount})</p>
 
           {#if factionStore.members.length > 0}
             <div class="member-list">
@@ -374,11 +376,11 @@
             <div class="faction-stats">
               <div class="f-stat">
                 <span class="f-label">Leader</span>
-                <span class="f-val">{factionStore.viewedFaction.leader_name}</span>
+                <span class="f-val">{factionStore.viewedFaction.leader_username ?? factionStore.viewedFaction.leader_name}</span>
               </div>
               <div class="f-stat">
                 <span class="f-label">Members</span>
-                <span class="f-val mono">{factionStore.viewedFaction.members?.length ?? '?'}</span>
+                <span class="f-val mono">{factionStore.viewedFaction.member_count ?? factionStore.viewedFaction.members?.length ?? '?'}</span>
               </div>
               {#if factionStore.viewedFaction.standing !== undefined}
                 <div class="f-stat">
