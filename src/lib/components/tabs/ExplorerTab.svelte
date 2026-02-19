@@ -170,10 +170,15 @@
     anomaly: '#ff5252',
   };
 
+  // ---- Tunable size multipliers ----
+  let sunSize = $state(0.22);
+  let planetSize = $state(0.11);
+  let showSizePanel = $state(false);
+
   function dotRadius(type: string, s: number): number {
     switch (type) {
-      case 'sun': return s * 0.22;
-      case 'planet': return s * 0.11;
+      case 'sun': return s * sunSize;
+      case 'planet': return s * planetSize;
       case 'station': return s * 0.08;
       case 'nebula': return s * 0.13;
       case 'gas_cloud': return s * 0.11;
@@ -477,7 +482,27 @@
     <button class="home-btn" onclick={fetchMapData} title="Refresh Map Data">
       <span class="material-icons" style="font-size:14px">refresh</span>
     </button>
+    <button class="home-btn" onclick={() => showSizePanel = !showSizePanel} title="Size Settings">
+      <span class="material-icons" style="font-size:14px">tune</span>
+    </button>
   </div>
+
+  <!-- Size tuning panel -->
+  {#if showSizePanel}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="size-panel" onmousedown={(e) => e.stopPropagation()} ontouchstart={(e) => e.stopPropagation()}>
+      <div class="size-row">
+        <span class="size-label">Sun</span>
+        <input type="range" min="0.05" max="1.0" step="0.01" bind:value={sunSize} />
+        <span class="size-val">{sunSize.toFixed(2)}</span>
+      </div>
+      <div class="size-row">
+        <span class="size-label">Planet</span>
+        <input type="range" min="0.02" max="0.5" step="0.01" bind:value={planetSize} />
+        <span class="size-val">{planetSize.toFixed(2)}</span>
+      </div>
+    </div>
+  {/if}
 
   <!-- Zoom info -->
   <div class="zoom-info">
@@ -798,6 +823,48 @@
   .home-btn:hover {
     background: rgba(79,195,247,0.15);
     border-color: rgba(79,195,247,0.5);
+  }
+
+  .size-panel {
+    position: absolute;
+    top: 36px;
+    left: 8px;
+    z-index: 11;
+    background: rgba(6,10,16,0.92);
+    border: 1px solid rgba(79,195,247,0.25);
+    border-radius: 4px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .size-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .size-label {
+    color: #78909c;
+    font-size: 0.65rem;
+    font-family: 'Roboto Mono', monospace;
+    width: 40px;
+  }
+
+  .size-row input[type="range"] {
+    width: 100px;
+    height: 4px;
+    accent-color: #4fc3f7;
+    cursor: pointer;
+  }
+
+  .size-val {
+    color: #4fc3f7;
+    font-size: 0.65rem;
+    font-family: 'Roboto Mono', monospace;
+    width: 32px;
+    text-align: right;
   }
 
   .zoom-info {
