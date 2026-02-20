@@ -666,6 +666,60 @@ export interface Achievement {
   unlocked_at: number | null;
 }
 
+// ---- Battle (Zone-based PvP) ----
+
+export type BattleZone = 'outer' | 'mid' | 'inner' | 'engaged';
+export type BattleStance = 'fire' | 'evade' | 'brace' | 'flee';
+export type BattleActionType = 'advance' | 'retreat' | 'stance' | 'target' | 'engage';
+
+export interface BattleParticipant {
+  player_id: string;
+  username: string;
+  ship_class?: string;
+  side_id: number;
+  zone: BattleZone;
+  stance: BattleStance;
+  target_id?: string;
+  // Server sends hull_pct / shield_pct (0-100 integer)
+  hull_pct?: number;
+  shield_pct?: number;
+  // Normalized aliases (set by store)
+  hull_percent: number;
+  shield_percent: number;
+  is_fleeing?: boolean;
+  is_destroyed?: boolean;
+  // battle_ended fields
+  damage_dealt?: number;
+  damage_taken?: number;
+  kill_count?: number;
+  survived?: boolean;
+}
+
+export interface BattleSide {
+  side_id: number;
+  player_count?: number;
+  members?: string[];
+}
+
+export interface BattleStatus {
+  battle_id: string;
+  tick?: number;
+  system_id?: string;
+  sides: BattleSide[];
+  participants: BattleParticipant[];
+  // From battle_update: your_ prefixed fields
+  your_side_id?: number;
+  your_zone?: BattleZone;
+  your_stance?: BattleStance;
+  your_target_id?: string;
+  auto_pilot?: boolean;
+  // Normalized (set by store from your_ or my_ fields)
+  my_side_id?: number;
+  my_zone?: BattleZone;
+  my_stance?: BattleStance;
+  my_target_id?: string;
+}
+
 // ---- Combat ----
 
 export interface CombatEvent {

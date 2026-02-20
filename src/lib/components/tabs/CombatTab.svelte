@@ -6,6 +6,8 @@
   import { ws } from '$lib/services/websocket';
   import { chatStore } from '$lib/stores/chat.svelte';
   import ScavengerSubTab from './ScavengerSubTab.svelte';
+  import BattleSubTab from './BattleSubTab.svelte';
+  import { battleStore } from '$lib/stores/battle.svelte';
 
   // ---- Sub-tab state ----
   type SubTab = 'combat' | 'scavenger';
@@ -57,7 +59,7 @@
     if (combatStore.scanResult?.targets?.length) {
       return combatStore.scanResult.targets.map(t => ({
         id: t.id ?? t.player_id ?? '',
-        username: t.username,
+        username: t.username ?? '???',
         ship: t.ship_type ?? t.ship_class ?? '?',
         visible: t.visible !== false,
         in_combat: t.in_combat ?? false,
@@ -65,7 +67,7 @@
     }
     return systemStore.nearbyPlayers.map(p => ({
       id: p.id ?? p.player_id ?? '',
-      username: p.username,
+      username: p.username ?? '???',
       ship: p.ship_type ?? p.ship_class ?? '?',
       visible: true,
       in_combat: p.in_combat ?? false,
@@ -80,15 +82,15 @@
     if (filterText.trim()) {
       const q = filterText.trim().toLowerCase();
       list = list.filter(t =>
-        t.username.toLowerCase().includes(q) ||
-        t.ship.toLowerCase().includes(q)
+        (t.username ?? '').toLowerCase().includes(q) ||
+        (t.ship ?? '').toLowerCase().includes(q)
       );
     }
 
     // Sort
     list = [...list].sort((a, b) => {
-      if (sortBy === 'name') return a.username.localeCompare(b.username);
-      if (sortBy === 'ship') return a.ship.localeCompare(b.ship);
+      if (sortBy === 'name') return (a.username ?? '').localeCompare(b.username ?? '');
+      if (sortBy === 'ship') return (a.ship ?? '').localeCompare(b.ship ?? '');
       // combat: in_combat first
       return (b.in_combat ? 1 : 0) - (a.in_combat ? 1 : 0);
     });
@@ -127,6 +129,9 @@
   >
     <span class="material-icons">gps_fixed</span>
     <span class="sub-tab-label">Combat</span>
+    {#if battleStore.inBattle || combatStore.inCombat}
+      <span class="battle-indicator">BATTLE</span>
+    {/if}
   </button>
   <button
     class="sub-tab-btn"
@@ -139,6 +144,10 @@
 </div>
 
 {#if activeSubTab === 'combat'}
+  {#if battleStore.inBattle || combatStore.inCombat}
+    <!-- === Battle Mode: Tactical UI === -->
+    <BattleSubTab />
+  {:else}
   <!-- === Combat Sub-Tab (original content) === -->
   <div class="two-col">
     <!-- Left: Targets -->
@@ -166,7 +175,7 @@
 
         {#if displayTargets().length > 0}
           <div class="target-list">
-            {#each displayTargets() as target (target.id)}
+            {#each displayTargets() as target, idx (target.id || `_idx_${idx}`)}
               <div
                 class="target-item"
                 class:selected={selectedTargetId === target.id}
@@ -381,6 +390,7 @@
       </Content>
     </Card>
   </div>
+  {/if}
 {:else if activeSubTab === 'scavenger'}
   <!-- === Scavenger Sub-Tab === -->
   <ScavengerSubTab />
@@ -427,6 +437,22 @@
   }
 
   .sub-tab-label { white-space: nowrap; }
+
+  .battle-indicator {
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #060a10;
+    background: #f44336;
+    padding: 1px 4px;
+    border-radius: 2px;
+    letter-spacing: 0.5px;
+    animation: battle-pulse 1.5s infinite;
+  }
+
+  @keyframes battle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
 
   /* ---- Controls ---- */
   .controls-row {

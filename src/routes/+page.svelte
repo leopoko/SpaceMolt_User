@@ -3,6 +3,7 @@
   import Tab, { Label, Icon } from '@smui/tab';
   import { authStore } from '$lib/stores/auth.svelte';
   import { uiStore, TABS } from '$lib/stores/ui.svelte';
+  import { battleStore } from '$lib/stores/battle.svelte';
   import { prefixKey } from '$lib/stores/storagePrefix';
   import LoginScreen from '$lib/components/LoginScreen.svelte';
   import StatusBar from '$lib/components/StatusBar.svelte';
@@ -180,7 +181,7 @@
 {#if !authStore.isLoggedIn}
   <LoginScreen />
 {:else}
-  <div class="app-shell" class:dragging={isDragging}>
+  <div class="app-shell" class:dragging={isDragging} class:in-combat={battleStore.inBattle}>
     <StatusBar />
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -376,5 +377,39 @@
   /* Prevent text selection while dragging */
   .dragging {
     user-select: none;
+  }
+
+  /* ---- Red combat overlay when in battle ---- */
+  .in-combat {
+    box-shadow: inset 0 0 60px rgba(244, 67, 54, 0.15);
+    border: 2px solid rgba(244, 67, 54, 0.35);
+  }
+
+  .in-combat::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    border: 2px solid rgba(244, 67, 54, 0.5);
+    box-shadow:
+      inset 0 0 80px rgba(244, 67, 54, 0.08),
+      inset 0 0 20px rgba(244, 67, 54, 0.05);
+    animation: combat-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes combat-pulse {
+    0%, 100% {
+      border-color: rgba(244, 67, 54, 0.5);
+      box-shadow:
+        inset 0 0 80px rgba(244, 67, 54, 0.08),
+        inset 0 0 20px rgba(244, 67, 54, 0.05);
+    }
+    50% {
+      border-color: rgba(244, 67, 54, 0.3);
+      box-shadow:
+        inset 0 0 60px rgba(244, 67, 54, 0.04),
+        inset 0 0 15px rgba(244, 67, 54, 0.03);
+    }
   }
 </style>
