@@ -5,7 +5,8 @@ import type {
   CatalogType, CatalogResponse,
   BaseInfo, BaseCondition,
   ForumThread, ForumReply, ForumCategory,
-  TradeOffer
+  TradeOffer,
+  BattleStatus, BattleStance
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -13,6 +14,7 @@ import { playerStore } from '$lib/stores/player.svelte';
 import { shipStore } from '$lib/stores/ship.svelte';
 import { systemStore } from '$lib/stores/system.svelte';
 import { combatStore } from '$lib/stores/combat.svelte';
+import { battleStore } from '$lib/stores/battle.svelte';
 import { marketStore } from '$lib/stores/market.svelte';
 import { craftingStore } from '$lib/stores/crafting.svelte';
 import { factionStore, type FactionListItem, type FactionInvite } from '$lib/stores/faction.svelte';
@@ -136,14 +138,57 @@ class WebSocketService {
   // ---- Message dispatch ----
 
   private onMessage(event: MessageEvent) {
-    let msg: WsMessage;
+    const raw = event.data as string;
+    // Try single JSON first (fast path)
     try {
-      msg = JSON.parse(event.data as string);
-    } catch {
-      console.error('Invalid WS message:', event.data);
+      const msg: WsMessage = JSON.parse(raw);
+      this.dispatch(msg);
+      return;
+    } catch { /* may be concatenated JSON */ }
+
+    // Server sometimes concatenates multiple JSON objects in one frame
+    // e.g. {"type":"error",...}{"type":"battle_update",...}
+    const messages = this.splitConcatenatedJson(raw);
+    if (messages.length === 0) {
+      console.error('Invalid WS message:', raw);
       return;
     }
-    this.dispatch(msg);
+    for (const msg of messages) {
+      this.dispatch(msg);
+    }
+  }
+
+  /** Split concatenated JSON objects like `{...}{...}` into individual parsed messages.
+   *  Handles strings (skips braces inside "...") and escaped quotes. */
+  private splitConcatenatedJson(raw: string): WsMessage[] {
+    const results: WsMessage[] = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inString) {
+        if (ch === '\\') { i++; continue; }  // skip escaped char
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          try {
+            results.push(JSON.parse(raw.substring(start, i + 1)));
+          } catch {
+            console.error('Failed to parse JSON segment:', raw.substring(start, i + 1));
+          }
+          start = -1;
+        }
+      }
+    }
+    return results;
   }
 
   private dispatch(msg: WsMessage) {
@@ -200,7 +245,17 @@ class WebSocketService {
         const pl = p<{ code?: string; message?: string; command?: string }>(msg);
         const errMsg = pl.message ?? 'Unknown error';
         console.debug('[WS error] code:', pl.code, '| message:', errMsg);
-        eventsStore.add({ type: 'error', message: errMsg });
+        // Silently handle not_in_battle errors from get_battle_status polling
+        if (pl.code === 'not_in_battle') {
+          battleStore.clear();
+          break;
+        }
+        // Show combat-related errors as combat events (more visible in battle UI)
+        if (pl.code === 'out_of_ammo' || pl.code === 'no_weapons') {
+          eventsStore.add({ type: 'combat', message: errMsg });
+        } else {
+          eventsStore.add({ type: 'error', message: errMsg });
+        }
         // Clear travel state if a travel/jump is in progress
         // Server sends generic 'error' type for some failures (e.g. not_connected)
         if (systemStore.travel.in_progress) {
@@ -228,7 +283,15 @@ class WebSocketService {
         if (pl.modules === null) shipStore.updateModules([]);
         else if (pl.modules) shipStore.updateModules(pl.modules);
         if (pl.nearby) systemStore.setNearby(pl.nearby);
-        if (pl.in_combat !== undefined) combatStore.setInCombat(pl.in_combat);
+        // NOTE: state_update.in_combat is unreliable for PvP battles (often false
+        // even during active battle). Only use battle_started / battle_ended messages
+        // for battleStore. Do NOT let in_combat:false clear battleStore.
+        if (pl.in_combat !== undefined) {
+          // Only trust in_combat for NPC pirate combat, not PvP battles
+          if (!battleStore.inBattle) {
+            combatStore.setInCombat(pl.in_combat);
+          }
+        }
         // Also handle legacy fields (events, chat, system) for forward-compatibility
         const legacy = pl as unknown as StateUpdate;
         if (legacy.system) systemStore.update(legacy.system);
@@ -322,6 +385,16 @@ class WebSocketService {
           } else {
             eventsStore.add({ type: 'combat', message: `Scan failed: ${scanResult.target_id}` });
           }
+        } else if (cmd === 'battle' && result) {
+          const message = (result.message as string) ?? 'Battle action executed';
+          eventsStore.add({ type: 'combat', message });
+          // Refresh battle status after any battle action
+          this.getBattleStatus();
+        } else if (cmd === 'attack' && result) {
+          const message = (result.message as string) ?? 'Attack initiated';
+          eventsStore.add({ type: 'combat', message });
+          // Auto-poll battle status when attack succeeds (entering battle)
+          this.getBattleStatus();
         } else if (cmd === 'deposit_credits' && result) {
           const amount = (result.amount as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Deposited ₡${amount.toLocaleString()} to station` });
@@ -529,6 +602,45 @@ class WebSocketService {
         break;
       }
 
+      case 'battle_started': {
+        const pl = p<BattleStatus>(msg);
+        battleStore.setStatus(pl);
+        const participantNames = (pl.participants ?? []).map(pp => pp.username).join(', ');
+        eventsStore.add({ type: 'combat', message: `Battle started! Participants: ${participantNames}` });
+        break;
+      }
+
+      case 'battle_update': {
+        const pl = p<BattleStatus>(msg);
+        battleStore.setStatus(pl);
+        break;
+      }
+
+      case 'battle_ended': {
+        const pl = p<Record<string, unknown>>(msg);
+        const reason = (pl.reason as string) ?? 'unknown';
+        const winningSide = pl.winning_side as number;
+        const duration = pl.duration as number;
+        const destroyed = pl.ships_destroyed as number;
+        battleStore.endedSummary = pl;
+        battleStore.clear();
+        let summary = `Battle ended: ${reason}`;
+        if (winningSide && winningSide > 0) summary += ` (side ${winningSide} wins)`;
+        if (duration) summary += ` — ${duration} ticks`;
+        if (destroyed) summary += `, ${destroyed} ships destroyed`;
+        eventsStore.add({ type: 'combat', message: summary });
+        break;
+      }
+
+      case 'police_combat': {
+        const pl = p<{ damage: number; damage_type?: string; destroyed?: boolean; drone_id?: string; target_id?: string; tick?: number }>(msg);
+        eventsStore.add({
+          type: 'combat',
+          message: `Police drone hit for ${pl.damage} ${pl.damage_type ?? ''} dmg${pl.destroyed ? ' — DESTROYED!' : ''}`
+        });
+        break;
+      }
+
       case 'combat_update': {
         const pl = p<CombatEvent>(msg);
         combatStore.addEvent(pl);
@@ -537,11 +649,16 @@ class WebSocketService {
           type: 'combat',
           message: `${pl.attacker} → ${pl.defender}: ${pl.damage} dmg (${pl.result})`
         });
+        // Auto-poll battle status when combat begins
+        if (!battleStore.inBattle) {
+          this.getBattleStatus();
+        }
         break;
       }
 
       case 'player_died': {
         combatStore.setInCombat(false);
+        battleStore.clear();
         eventsStore.add({ type: 'combat', message: 'You were destroyed!' });
         playerStore.update({ status: 'dead' });
         break;
@@ -788,6 +905,12 @@ class WebSocketService {
             scavengerStore.setWrecks(normalized as never);
             break;
           }
+        }
+        // Battle status response
+        if (pl.action === 'get_battle_status') {
+          const raw = msg.payload as Record<string, unknown>;
+          battleStore.setStatus(raw as unknown as BattleStatus);
+          break;
         }
         if (pl.action === 'view_market' && pl.items) {
           marketStore.setData({ base: pl.base ?? '', items: pl.items });
@@ -1292,7 +1415,7 @@ class WebSocketService {
 
   attack(targetId: string) {
     combatStore.lastAttackTarget = targetId;
-    this.send({ type: 'attack', payload: { target: targetId } });
+    this.send({ type: 'attack', payload: { target_id: targetId } });
   }
 
   scan(targetId?: string) {
@@ -1301,6 +1424,41 @@ class WebSocketService {
     } else {
       this.send({ type: 'scan' });
     }
+  }
+
+  // ---- Battle (Zone-based PvP) ----
+
+  /** Query: get current battle state (no tick cost) */
+  getBattleStatus() {
+    battleStore.setLoading(true);
+    this.send({ type: 'get_battle_status' });
+  }
+
+  /** Mutation: move one zone closer */
+  battleAdvance() {
+    this.send({ type: 'battle', payload: { action: 'advance' } });
+  }
+
+  /** Mutation: move one zone back */
+  battleRetreat() {
+    this.send({ type: 'battle', payload: { action: 'retreat' } });
+  }
+
+  /** Mutation: change stance */
+  battleStance(stance: BattleStance) {
+    this.send({ type: 'battle', payload: { action: 'stance', stance } });
+  }
+
+  /** Mutation: set target */
+  battleTarget(targetId: string) {
+    this.send({ type: 'battle', payload: { action: 'target', target_id: targetId } });
+  }
+
+  /** Mutation: join an existing battle */
+  battleEngage(sideId?: number) {
+    const payload: Record<string, unknown> = { action: 'engage' };
+    if (sideId !== undefined) payload.side_id = sideId;
+    this.send({ type: 'battle', payload });
   }
 
   // ---- Scavenger ----
