@@ -583,6 +583,44 @@ EventLog 下部の `›` プロンプトから手動コマンドを入力でき�
 
 ---
 
+## SpaceMolt MCP を使った開発時の動作確認
+
+このリポジトリには `.mcp.json` で SpaceMolt MCP サーバーが設定されている。
+UI 実装時に実際のゲームAPIレスポンスを確認したい場合、MCP ツールを積極的に活用すること。
+
+### ツール定義の参照（ログイン不要）
+
+MCP ツールのスキーマ（説明・パラメータ定義）はログインなしで参照できる。
+新しいコマンドを実装する前に、対応するツールの定義を確認して型・パラメータを把握する。
+
+例えば `shipyard_showroom` を実装するなら、ツール定義から以下を確認できる:
+- パラメータ: `category`（Combat, Industrial 等）/ `scale`（1〜5）
+- 返却データの意味・構造
+
+### 実際のAPIレスポンスの確認（ログインが必要）
+
+実際のレスポンス形式やフィールド名を確認したい場合は MCP ツールを呼び出す。
+そのためにはまず `login` ツールでセッションを取得すること。
+
+```
+# 開発確認に便利なツール（例）
+catalog(type="ships")          → 全船クラス一覧と詳細
+catalog(type="items")          → 全アイテム一覧
+get_commands()                 → 全コマンド一覧（メタデータ付き）
+help(command="travel")         → 特定コマンドのヘルプ
+get_guide(guide="trader")      → プレイスタイルガイド
+shipyard_showroom()            → ショールーム在庫（実際のデータ構造確認）
+view_market()                  → マーケットデータ構造確認
+```
+
+### 注意事項
+
+- ゲームの Mutation コマンド（`travel`, `mine`, `buy` 等）は実際のゲーム状態を変更するため、
+  開発確認目的では Query コマンド（`get_status`, `catalog`, `view_market` 等）を優先すること
+- `session_id` は 30 分の無操作でタイムアウトする。作業が長引く場合は `login` で再取得する
+
+---
+
 ## Git ブランチ・コミット規約
 
 - 作業ブランチ: `claude/fix-navigation-tab-E640i`
