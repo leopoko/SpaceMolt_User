@@ -597,10 +597,26 @@ MCP ツールのスキーマ（説明・パラメータ定義）はログイン�
 - パラメータ: `category`（Combat, Industrial 等）/ `scale`（1〜5）
 - 返却データの意味・構造
 
+### 動作確認専用アカウント
+
+開発・動作確認用のアカウントが用意されている。認証情報は `.env.spacemolt` に記載。
+**このファイルは `.gitignore` で除外済みのため Git にはコミットされない。**
+
+```
+ファイル: .env.spacemolt
+username: DevTest Agent
+empire:   solarian
+```
+
+MCP ツールでログインする場合:
+```
+login(username="DevTest Agent", password="<.env.spacemoltのSPACEMOLT_PASSWORDを参照>")
+```
+
 ### 実際のAPIレスポンスの確認（ログインが必要）
 
 実際のレスポンス形式やフィールド名を確認したい場合は MCP ツールを呼び出す。
-そのためにはまず `login` ツールでセッションを取得すること。
+そのためにはまず `login` ツールで上記の開発用アカウントのセッションを取得すること。
 
 ```
 # 開発確認に便利なツール（例）
