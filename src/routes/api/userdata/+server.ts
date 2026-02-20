@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 
 /**
@@ -7,9 +8,9 @@ import type { RequestHandler } from './$types';
  * Uses Upstash Redis (via Vercel Marketplace) to store per-user data blobs.
  * If Redis is not configured (no env vars), returns 503 gracefully.
  *
- * Data is keyed by `userdata:<username>` and stored as a JSON string.
- * A simple auth token (SHA-256 of username:password) is required to prevent
- * unauthorized reads/writes.
+ * Supported env var names (checks in order):
+ *   KV_REST_API_URL / KV_REST_API_TOKEN          (Vercel KV legacy)
+ *   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash integration)
  *
  * GET /api/userdata?username=xxx
  *   Headers: Authorization: Bearer <token>
@@ -21,17 +22,15 @@ import type { RequestHandler } from './$types';
  *   Returns: { ok: true }
  */
 
-function getRedis() {
-  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+function getRedisConfig() {
+  const url = env.KV_REST_API_URL ?? env.UPSTASH_REDIS_REST_URL;
+  const token = env.KV_REST_API_TOKEN ?? env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-
-  // Dynamic import to avoid build errors when not configured
   return { url, token };
 }
 
 async function redisGet(key: string): Promise<string | null> {
-  const cfg = getRedis();
+  const cfg = getRedisConfig();
   if (!cfg) return null;
   const { Redis } = await import('@upstash/redis');
   const redis = new Redis({ url: cfg.url, token: cfg.token });
@@ -39,7 +38,7 @@ async function redisGet(key: string): Promise<string | null> {
 }
 
 async function redisSet(key: string, value: string): Promise<void> {
-  const cfg = getRedis();
+  const cfg = getRedisConfig();
   if (!cfg) return;
   const { Redis } = await import('@upstash/redis');
   const redis = new Redis({ url: cfg.url, token: cfg.token });
@@ -53,7 +52,7 @@ function getToken(request: Request): string | null {
 }
 
 export const GET: RequestHandler = async ({ url, request }) => {
-  const cfg = getRedis();
+  const cfg = getRedisConfig();
   if (!cfg) {
     return json({ data: null, reason: 'storage_not_configured' }, { status: 503 });
   }
@@ -88,7 +87,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 };
 
 export const PUT: RequestHandler = async ({ request }) => {
-  const cfg = getRedis();
+  const cfg = getRedisConfig();
   if (!cfg) {
     return json({ ok: false, reason: 'storage_not_configured' }, { status: 503 });
   }
