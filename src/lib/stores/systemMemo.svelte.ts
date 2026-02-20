@@ -28,6 +28,7 @@
 
 import type { SystemInfo } from '$lib/types/game';
 import { userDataSync } from '$lib/services/userDataSync';
+import { prefixKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_system_memos';
 
@@ -68,7 +69,7 @@ class SystemMemoStore {
   constructor() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(prefixKey(STORAGE_KEY));
         if (saved) {
           this.memos = JSON.parse(saved);
         }
@@ -174,7 +175,7 @@ class SystemMemoStore {
 
   private persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.memos));
+      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(this.memos));
     } catch {
       // ignore storage errors
     }
@@ -183,7 +184,7 @@ class SystemMemoStore {
 
   reset() {
     this.memos = {};
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 

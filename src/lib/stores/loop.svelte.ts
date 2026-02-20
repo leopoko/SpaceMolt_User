@@ -5,6 +5,7 @@ import { ws } from '$lib/services/websocket';
 import { shipStore } from '$lib/stores/ship.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
 import { userDataSync } from '$lib/services/userDataSync';
+import { prefixKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_loops';
 
@@ -47,7 +48,7 @@ class LoopStore {
   private loadFromStorage() {
     if (typeof localStorage === 'undefined') return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(prefixKey(STORAGE_KEY));
       if (raw) {
         this.savedLoops = JSON.parse(raw) as SavedLoop[];
       }
@@ -59,7 +60,7 @@ class LoopStore {
   private saveToStorage() {
     if (typeof localStorage === 'undefined') return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.savedLoops));
+      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(this.savedLoops));
     } catch {
       // ignore
     }

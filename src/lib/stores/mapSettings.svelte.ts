@@ -1,3 +1,5 @@
+import { prefixKey } from './storagePrefix';
+
 const STORAGE_KEY = 'sm_map_settings';
 
 interface MapSettingsData {
@@ -18,14 +20,14 @@ const DEFAULTS: MapSettingsData = {
 
 function load(): MapSettingsData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(prefixKey(STORAGE_KEY));
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
   } catch { /* ignore */ }
   return { ...DEFAULTS };
 }
 
 function save(data: MapSettingsData) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+  try { localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(data)); } catch { /* ignore */ }
 }
 
 // Load once at module init — $state() gets the persisted value directly

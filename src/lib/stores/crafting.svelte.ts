@@ -1,10 +1,11 @@
 import type { Recipe } from '$lib/types/game';
+import { prefixKey } from './storagePrefix';
 
 const FAVORITES_KEY = 'sm_crafting_favorites';
 
 function loadFavorites(): Set<string> {
   try {
-    const raw = localStorage.getItem(FAVORITES_KEY);
+    const raw = localStorage.getItem(prefixKey(FAVORITES_KEY));
     if (raw) return new Set(JSON.parse(raw) as string[]);
   } catch { /* ignore */ }
   return new Set();
@@ -12,7 +13,7 @@ function loadFavorites(): Set<string> {
 
 function saveFavorites(ids: Set<string>) {
   try {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...ids]));
+    localStorage.setItem(prefixKey(FAVORITES_KEY), JSON.stringify([...ids]));
   } catch { /* ignore */ }
 }
 

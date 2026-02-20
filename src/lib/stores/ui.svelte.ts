@@ -1,6 +1,8 @@
+import { prefixKey } from './storagePrefix';
+
 function getBool(key: string, defaultVal: boolean): boolean {
   if (typeof localStorage === 'undefined') return defaultVal;
-  const v = localStorage.getItem(key);
+  const v = localStorage.getItem(prefixKey(key));
   if (v === null) return defaultVal;
   return v !== 'false';
 }
@@ -48,7 +50,7 @@ class UiStore {
   setDarkMode(val: boolean) {
     this.darkMode = val;
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('spacemolt_darkmode', String(val));
+      localStorage.setItem(prefixKey('spacemolt_darkmode'), String(val));
     }
     // Toggle SMUI theme stylesheets
     if (typeof document !== 'undefined') {

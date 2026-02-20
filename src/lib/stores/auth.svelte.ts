@@ -1,6 +1,8 @@
+import { prefixKey } from './storagePrefix';
+
 function getStoredItem(key: string): string {
   if (typeof localStorage === 'undefined') return '';
-  return localStorage.getItem(key) ?? '';
+  return localStorage.getItem(prefixKey(key)) ?? '';
 }
 
 class AuthStore {
@@ -14,9 +16,9 @@ class AuthStore {
 
   persistCredentials(username: string, password: string) {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('spacemolt_username', username);
-      localStorage.setItem('spacemolt_password', password);
-      localStorage.setItem('spacemolt_remember', 'true');
+      localStorage.setItem(prefixKey('spacemolt_username'), username);
+      localStorage.setItem(prefixKey('spacemolt_password'), password);
+      localStorage.setItem(prefixKey('spacemolt_remember'), 'true');
     }
     this.savedUsername = username;
     this.savedPassword = password;
@@ -25,9 +27,9 @@ class AuthStore {
 
   clearCredentials() {
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('spacemolt_username');
-      localStorage.removeItem('spacemolt_password');
-      localStorage.setItem('spacemolt_remember', 'false');
+      localStorage.removeItem(prefixKey('spacemolt_username'));
+      localStorage.removeItem(prefixKey('spacemolt_password'));
+      localStorage.setItem(prefixKey('spacemolt_remember'), 'false');
     }
     this.savedUsername = '';
     this.savedPassword = '';
