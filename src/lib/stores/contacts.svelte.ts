@@ -1,5 +1,6 @@
 import type { ChatMessage } from '$lib/types/game';
 import { userDataSync } from '$lib/services/userDataSync';
+import { prefixKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_contacts';
 const MAX_HISTORY_PER_CONTACT = 100;
@@ -18,7 +19,7 @@ export interface ContactData {
 
 function loadData(): ContactData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(prefixKey(STORAGE_KEY));
     if (raw) {
       const parsed = JSON.parse(raw) as ContactData;
       return {
@@ -32,7 +33,7 @@ function loadData(): ContactData {
 
 function saveData(data: ContactData) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(data));
   } catch { /* ignore */ }
 }
 

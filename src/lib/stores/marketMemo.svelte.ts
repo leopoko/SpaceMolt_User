@@ -40,6 +40,7 @@
 
 import type { MarketData, MarketItem } from '$lib/types/game';
 import { userDataSync } from '$lib/services/userDataSync';
+import { prefixKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_market_memos';
 
@@ -64,7 +65,7 @@ class MarketMemoStore {
   constructor() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(prefixKey(STORAGE_KEY));
         if (saved) {
           this.memos = JSON.parse(saved);
         }
@@ -147,7 +148,7 @@ class MarketMemoStore {
 
   private persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.memos));
+      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(this.memos));
     } catch {
       // ignore storage errors
     }
@@ -156,7 +157,7 @@ class MarketMemoStore {
 
   reset() {
     this.memos = {};
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 
