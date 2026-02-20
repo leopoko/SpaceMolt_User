@@ -63,6 +63,9 @@ class CraftingStore {
   }
 
   reset() {
+    this.recipes = [];
+    this.selectedRecipe = null;
+    this.craftCount = 1;
     this.lastResult = null;
   }
 }

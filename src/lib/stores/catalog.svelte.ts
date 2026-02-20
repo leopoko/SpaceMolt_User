@@ -78,6 +78,14 @@ class CatalogStore {
       this.onItemsBulkResponse(resp);
     }
   }
+
+  reset() {
+    this.ships = emptyState();
+    this.skills = emptyState();
+    this.recipes = emptyState();
+    this.items = emptyState();
+    this.onItemsBulkResponse = null;
+  }
 }
 
 export const catalogStore = new CatalogStore();

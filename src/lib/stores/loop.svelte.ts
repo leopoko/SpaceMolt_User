@@ -4,6 +4,7 @@ import { eventsStore } from '$lib/stores/events.svelte';
 import { ws } from '$lib/services/websocket';
 import { shipStore } from '$lib/stores/ship.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
+import { userDataSync } from '$lib/services/userDataSync';
 
 const STORAGE_KEY = 'sm_loops';
 
@@ -62,6 +63,7 @@ class LoopStore {
     } catch {
       // ignore
     }
+    userDataSync.notifyChange();
   }
 
   /** Start recording at the current station. */
@@ -389,6 +391,15 @@ class LoopStore {
           opts,
         };
     }
+  }
+
+  reset() {
+    if (this.isPlaying) this.stopLoop();
+    if (this.isRecording) this.cancelRecording();
+    this.isPlaying = false;
+    this.playingLoopId = null;
+    this.currentIteration = 0;
+    this.totalIterations = 0;
   }
 }
 

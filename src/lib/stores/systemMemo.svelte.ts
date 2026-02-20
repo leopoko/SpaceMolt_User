@@ -27,6 +27,7 @@
  */
 
 import type { SystemInfo } from '$lib/types/game';
+import { userDataSync } from '$lib/services/userDataSync';
 
 const STORAGE_KEY = 'sm_system_memos';
 
@@ -177,6 +178,7 @@ class SystemMemoStore {
     } catch {
       // ignore storage errors
     }
+    userDataSync.notifyChange();
   }
 
   reset() {

@@ -7,9 +7,11 @@
   import FormField from '@smui/form-field';
   import { connectionStore } from '$lib/stores/connection.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { resetAllGameStores } from '$lib/stores';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { mapSettingsStore } from '$lib/stores/mapSettings.svelte';
   import { ws } from '$lib/services/websocket';
+  import { userDataSync } from '$lib/services/userDataSync';
 
   let serverUrl = $state(connectionStore.serverUrl);
   let savedUser = $state(authStore.savedUsername);
@@ -39,6 +41,8 @@
   function disconnect() {
     ws.disconnect();
     authStore.logout();
+    resetAllGameStores();
+    userDataSync.reset();
   }
 
   function saveCredentials() {

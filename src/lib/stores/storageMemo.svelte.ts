@@ -7,6 +7,7 @@
  */
 
 import type { CargoItem, BaseInfo, BaseServices } from '$lib/types/game';
+import { userDataSync } from '$lib/services/userDataSync';
 
 const STORAGE_KEY = 'sm_storage_memos';
 
@@ -112,6 +113,7 @@ class StorageMemoStore {
     } catch {
       // ignore storage errors
     }
+    userDataSync.notifyChange();
   }
 
   reset() {
