@@ -390,6 +390,15 @@ class LoopStore {
         };
     }
   }
+
+  reset() {
+    if (this.isPlaying) this.stopLoop();
+    if (this.isRecording) this.cancelRecording();
+    this.isPlaying = false;
+    this.playingLoopId = null;
+    this.currentIteration = 0;
+    this.totalIterations = 0;
+  }
 }
 
 export const loopStore = new LoopStore();

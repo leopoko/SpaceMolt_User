@@ -87,6 +87,10 @@ class ContactsStore {
     this.data = { ...this.data };
     saveData(this.data);
   }
+
+  reset() {
+    this.data = { contacts: {}, history: {} };
+  }
 }
 
 export const contactsStore = new ContactsStore();
