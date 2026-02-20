@@ -28,6 +28,7 @@ import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 import { tradeStore } from '$lib/stores/trade.svelte';
+import { userDataSync } from '$lib/services/userDataSync';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -165,6 +166,8 @@ class WebSocketService {
         if (pl.ship) shipStore.updateCurrent(pl.ship as never);
         if (pl.system) systemStore.update(pl.system as never);
         eventsStore.add({ type: 'system', message: `Logged in as ${authStore.username}` });
+        // Sync user data (memos, bookmarks, etc.) from cloud
+        userDataSync.init(authStore.savedUsername, authStore.savedPassword);
         break;
       }
 

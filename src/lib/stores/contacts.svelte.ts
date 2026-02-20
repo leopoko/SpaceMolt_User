@@ -1,4 +1,5 @@
 import type { ChatMessage } from '$lib/types/game';
+import { userDataSync } from '$lib/services/userDataSync';
 
 const STORAGE_KEY = 'sm_contacts';
 const MAX_HISTORY_PER_CONTACT = 100;
@@ -86,6 +87,7 @@ class ContactsStore {
     // Trigger reactivity by reassigning
     this.data = { ...this.data };
     saveData(this.data);
+    userDataSync.notifyChange();
   }
 
   reset() {

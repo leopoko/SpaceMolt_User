@@ -5,6 +5,8 @@
  * Bookmarked items appear at the top of market and recipe lists.
  */
 
+import { userDataSync } from '$lib/services/userDataSync';
+
 const STORAGE_KEY = 'sm_item_bookmarks';
 
 function loadBookmarks(): Set<string> {
@@ -19,6 +21,7 @@ function saveBookmarks(ids: Set<string>) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
   } catch { /* ignore */ }
+  userDataSync.notifyChange();
 }
 
 class BookmarkStore {

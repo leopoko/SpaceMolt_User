@@ -39,6 +39,7 @@
  */
 
 import type { MarketData, MarketItem } from '$lib/types/game';
+import { userDataSync } from '$lib/services/userDataSync';
 
 const STORAGE_KEY = 'sm_market_memos';
 
@@ -150,6 +151,7 @@ class MarketMemoStore {
     } catch {
       // ignore storage errors
     }
+    userDataSync.notifyChange();
   }
 
   reset() {
