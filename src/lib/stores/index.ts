@@ -27,6 +27,7 @@ export { tradeStore } from './trade.svelte';
 export { uiStore, TABS } from './ui.svelte';
 export type { TabDef } from './ui.svelte';
 export { actionQueueStore } from './actionQueue.svelte';
+export { shipCatalogStore } from './shipCatalog.svelte';
 
 // --- Multi-user support ---
 // Import all stores for the reset function
@@ -50,6 +51,7 @@ import { loopStore } from './loop.svelte';
 import { scavengerStore } from './scavenger.svelte';
 import { tradeStore } from './trade.svelte';
 import { actionQueueStore } from './actionQueue.svelte';
+import { shipCatalogStore } from './shipCatalog.svelte';
 
 /**
  * Reset all game-state stores to their initial values.
@@ -78,4 +80,5 @@ export function resetAllGameStores() {
   scavengerStore.reset();
   tradeStore.reset();
   actionQueueStore.clear();
+  shipCatalogStore.reset();
 }

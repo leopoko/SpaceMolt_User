@@ -8,6 +8,8 @@
  * the previous home base is cleared and the new one is set.
  */
 
+import { prefixKey } from './storagePrefix';
+
 const STORAGE_KEY = 'sm_explorer';
 
 class ExplorerStore {
@@ -16,7 +18,7 @@ class ExplorerStore {
   constructor() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(prefixKey(STORAGE_KEY));
         if (saved) {
           const data = JSON.parse(saved);
           this.homeBaseSystemId = data.homeBaseSystemId ?? null;
@@ -38,7 +40,7 @@ class ExplorerStore {
 
   private persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify({
         homeBaseSystemId: this.homeBaseSystemId,
       }));
     } catch { /* ignore */ }
@@ -46,7 +48,7 @@ class ExplorerStore {
 
   reset() {
     this.homeBaseSystemId = null;
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 

@@ -1,4 +1,5 @@
 import type { Player, Skill, Mission, Achievement, PlayerStats } from '$lib/types/game';
+import { prefixKey } from './storagePrefix';
 
 const DOCK_KEY = 'sm_dock_state';
 
@@ -8,7 +9,7 @@ class PlayerStore {
   constructor() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(DOCK_KEY);
+        const saved = localStorage.getItem(prefixKey(DOCK_KEY));
         if (saved) {
           const partial = JSON.parse(saved) as Pick<Player, 'docked_at_base' | 'current_poi' | 'status' | 'poi_id'>;
           this.data = partial as Player;
@@ -109,7 +110,7 @@ class PlayerStore {
     }
     // Persist dock-relevant fields for page-reload survival
     try {
-      localStorage.setItem(DOCK_KEY, JSON.stringify({
+      localStorage.setItem(prefixKey(DOCK_KEY), JSON.stringify({
         status: this.data?.status ?? null,
         docked_at_base: this.data?.docked_at_base ?? null,
         current_poi: this.data?.current_poi ?? null,
@@ -122,7 +123,7 @@ class PlayerStore {
 
   reset() {
     this.data = null;
-    try { localStorage.removeItem(DOCK_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(prefixKey(DOCK_KEY)); } catch { /* ignore */ }
   }
 }
 

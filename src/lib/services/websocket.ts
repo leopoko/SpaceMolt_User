@@ -6,7 +6,8 @@ import type {
   BaseInfo, BaseCondition,
   ForumThread, ForumReply, ForumCategory,
   TradeOffer,
-  BattleStatus, BattleStance
+  BattleStatus, BattleStance,
+  ShowroomShip, CommissionOrder, CommissionQuote, ShipListing
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -478,6 +479,42 @@ class WebSocketService {
           const qty = (result.quantity as number) ?? 0;
           const message = (result.message as string) ?? `Jettisoned ${qty}x ${itemId}`;
           eventsStore.add({ type: 'info', message });
+        } else if (cmd === 'buy_ship') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship purchased!' });
+          this.shipyardShowroom();
+          this.listShips();
+          this.getStatus();
+        } else if (cmd === 'commission_ship') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship commissioned!' });
+          this.commissionStatus();
+        } else if (cmd === 'claim_commission') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship claimed!' });
+          this.commissionStatus();
+          this.listShips();
+          this.getStatus();
+        } else if (cmd === 'cancel_commission') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Commission cancelled' });
+          this.commissionStatus();
+        } else if (cmd === 'sell_ship') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship sold' });
+          this.listShips();
+        } else if (cmd === 'switch_ship') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship switched' });
+          this.getStatus();
+          this.listShips();
+        } else if (cmd === 'buy_listed_ship') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship purchased!' });
+          this.browseShips();
+          this.listShips();
+          this.getStatus();
+        } else if (cmd === 'list_ship_for_sale') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship listed for sale' });
+          this.browseShips();
+          this.listShips();
+        } else if (cmd === 'cancel_ship_listing') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Listing cancelled' });
+          this.browseShips();
+          this.listShips();
         } else if (cmd === 'trade_offer' && result) {
           const tradeId = (result.trade_id as string) ?? '';
           const message = (result.message as string) ?? 'Trade offer sent';
@@ -1114,7 +1151,49 @@ class WebSocketService {
           });
           break;
         }
-        if (pl.action === 'get_ships' || ((pl as Record<string, unknown>).ships && (pl as Record<string, unknown>).count && !(pl as Record<string, unknown>).active_ship_id)) {
+        // ---- Shipyard: Showroom ----
+        // Server sends: { base_id, base_name, count, ships, shipyard_level, tip }
+        // Detect by shipyard_level field (unique to showroom)
+        if (pl.action === 'shipyard_showroom' || ('shipyard_level' in (msg.payload as Record<string, unknown>))) {
+          const raw = msg.payload as Record<string, unknown>;
+          const ships = Array.isArray(raw.ships) ? (raw.ships as ShowroomShip[]) : [];
+          const tip = (raw.tip as string) ?? '';
+          const level = (raw.shipyard_level as number) ?? 0;
+          shipStore.setShowroom(ships, tip, level);
+          break;
+        }
+        // ---- Shipyard: Commission Quote ----
+        // Server sends: { ship_class, credits_only_total, provide_materials_total, build_time, ... }
+        // Detect by credits_only_total or provide_materials_total (unique to quote)
+        if (pl.action === 'commission_quote' || ('credits_only_total' in (msg.payload as Record<string, unknown>) || 'provide_materials_total' in (msg.payload as Record<string, unknown>))) {
+          const raw = msg.payload as Record<string, unknown>;
+          shipStore.setCommissionQuote(raw as unknown as CommissionQuote);
+          break;
+        }
+        // ---- Shipyard: Commission Status ----
+        if (pl.action === 'commission_status' || (Array.isArray((msg.payload as Record<string, unknown>).commissions))) {
+          const raw = msg.payload as Record<string, unknown>;
+          const orders = Array.isArray(raw.commissions) ? (raw.commissions as CommissionOrder[]) : [];
+          shipStore.setCommissions(orders);
+          break;
+        }
+        // Note: commission_ship, claim_commission, cancel_commission are Mutation commands.
+        // Their ok response has pending:true and is caught by the generic pending handler below.
+        // Actual results are handled in action_result case.
+        // ---- Shipyard: Browse Ships (Player Exchange) ----
+        // Server sends: { base_id, base_name, count, listings }
+        // Detect by 'listings' field (unique to browse_ships)
+        if (pl.action === 'browse_ships' || ('listings' in (msg.payload as Record<string, unknown>))) {
+          const raw = msg.payload as Record<string, unknown>;
+          const listings = Array.isArray(raw.listings) ? (raw.listings as ShipListing[]) : [];
+          shipStore.setShipListings(listings);
+          break;
+        }
+        // Note: buy_listed_ship, list_ship_for_sale, cancel_ship_listing,
+        // buy_ship, sell_ship, switch_ship are Mutation commands.
+        // Their ok response has pending:true and is caught by the generic pending handler below.
+        // Actual results are handled in action_result case.
+        if (pl.action === 'get_ships' || ((pl as Record<string, unknown>).ships && (pl as Record<string, unknown>).count && !(pl as Record<string, unknown>).active_ship_id && !(pl as Record<string, unknown>).shipyard_level)) {
           const raw = msg.payload as Record<string, unknown>;
           const rawShips = (raw.ships as Array<Record<string, unknown>>) ?? [];
           // Normalize catalog fields: server sends base_shield/cargo_capacity
@@ -1575,6 +1654,65 @@ class WebSocketService {
   buyShip(shipClass: string) { this.send({ type: 'buy_ship', payload: { ship_class: shipClass } }); }
   sellShip(shipId: string) { this.send({ type: 'sell_ship', payload: { ship_id: shipId } }); }
   switchShip(shipId: string) { this.send({ type: 'switch_ship', payload: { ship_id: shipId } }); }
+
+  // ---- Shipyard: Showroom ----
+
+  shipyardShowroom(category?: string, scale?: number) {
+    shipStore.showroomLoading = true;
+    const payload: Record<string, unknown> = {};
+    if (category) payload.category = category;
+    if (scale != null) payload.scale = scale;
+    this.send({ type: 'shipyard_showroom', payload });
+  }
+
+  // ---- Shipyard: Commission ----
+
+  commissionQuote(shipClass: string) {
+    shipStore.commissionQuoteLoading = true;
+    this.send({ type: 'commission_quote', payload: { ship_class: shipClass } });
+  }
+
+  commissionShip(shipClass: string, provideMaterials = false) {
+    this.send({ type: 'commission_ship', payload: { ship_class: shipClass, provide_materials: provideMaterials } });
+  }
+
+  commissionStatus(baseId?: string) {
+    shipStore.commissionsLoading = true;
+    const payload: Record<string, unknown> = {};
+    if (baseId) payload.base_id = baseId;
+    this.send({ type: 'commission_status', payload });
+  }
+
+  claimCommission(commissionId: string) {
+    this.send({ type: 'claim_commission', payload: { commission_id: commissionId } });
+  }
+
+  cancelCommission(commissionId: string) {
+    this.send({ type: 'cancel_commission', payload: { commission_id: commissionId } });
+  }
+
+  // ---- Shipyard: Player Ship Exchange ----
+
+  browseShips(baseId?: string, classId?: string, maxPrice?: number) {
+    shipStore.shipListingsLoading = true;
+    const payload: Record<string, unknown> = {};
+    if (baseId) payload.base_id = baseId;
+    if (classId) payload.class_id = classId;
+    if (maxPrice != null) payload.max_price = maxPrice;
+    this.send({ type: 'browse_ships', payload });
+  }
+
+  buyListedShip(listingId: string) {
+    this.send({ type: 'buy_listed_ship', payload: { listing_id: listingId } });
+  }
+
+  listShipForSale(shipId: string, price: number) {
+    this.send({ type: 'list_ship_for_sale', payload: { ship_id: shipId, price } });
+  }
+
+  cancelShipListing(listingId: string) {
+    this.send({ type: 'cancel_ship_listing', payload: { listing_id: listingId } });
+  }
 
   // ---- Module Management ----
 

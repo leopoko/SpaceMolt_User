@@ -6,12 +6,13 @@
  */
 
 import { userDataSync } from '$lib/services/userDataSync';
+import { prefixKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_item_bookmarks';
 
 function loadBookmarks(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(prefixKey(STORAGE_KEY));
     if (raw) return new Set(JSON.parse(raw) as string[]);
   } catch { /* ignore */ }
   return new Set();
@@ -19,7 +20,7 @@ function loadBookmarks(): Set<string> {
 
 function saveBookmarks(ids: Set<string>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
+    localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify([...ids]));
   } catch { /* ignore */ }
   userDataSync.notifyChange();
 }
@@ -65,7 +66,7 @@ class BookmarkStore {
 
   reset() {
     this.ids = new Set();
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 

@@ -4,6 +4,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { uiStore, TABS } from '$lib/stores/ui.svelte';
   import { battleStore } from '$lib/stores/battle.svelte';
+  import { prefixKey } from '$lib/stores/storagePrefix';
   import LoginScreen from '$lib/components/LoginScreen.svelte';
   import StatusBar from '$lib/components/StatusBar.svelte';
   import EventLog from '$lib/components/EventLog.svelte';
@@ -24,23 +25,23 @@
   // ======== localStorage helpers ========
   function loadNum(key: string, def: number, min: number, max: number): number {
     try {
-      const v = Number(localStorage.getItem(key));
+      const v = Number(localStorage.getItem(prefixKey(key)));
       if (v >= min && v <= max) return v;
     } catch { /* ignore */ }
     return def;
   }
   function saveNum(key: string, v: number) {
-    try { localStorage.setItem(key, String(v)); } catch { /* ignore */ }
+    try { localStorage.setItem(prefixKey(key), String(v)); } catch { /* ignore */ }
   }
   function loadBool(key: string, def: boolean): boolean {
     try {
-      const v = localStorage.getItem(key);
+      const v = localStorage.getItem(prefixKey(key));
       if (v !== null) return v === 'true';
     } catch { /* ignore */ }
     return def;
   }
   function saveBool(key: string, v: boolean) {
-    try { localStorage.setItem(key, String(v)); } catch { /* ignore */ }
+    try { localStorage.setItem(prefixKey(key), String(v)); } catch { /* ignore */ }
   }
 
   // ======== Drag state (shared) ========

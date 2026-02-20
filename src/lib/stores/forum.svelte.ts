@@ -1,4 +1,5 @@
 import type { ForumThread, ForumReply, ForumCategory } from '$lib/types/game';
+import { prefixKey } from './storagePrefix';
 
 const MY_THREADS_KEY = 'sm_my_threads';
 
@@ -12,7 +13,7 @@ interface MyThreadRef {
 function loadMyThreads(): MyThreadRef[] {
   if (typeof localStorage === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(MY_THREADS_KEY);
+    const raw = localStorage.getItem(prefixKey(MY_THREADS_KEY));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -22,7 +23,7 @@ function loadMyThreads(): MyThreadRef[] {
 function saveMyThreads(threads: MyThreadRef[]) {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(MY_THREADS_KEY, JSON.stringify(threads));
+    localStorage.setItem(prefixKey(MY_THREADS_KEY), JSON.stringify(threads));
   } catch { /* ignore */ }
 }
 
