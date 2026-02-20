@@ -1,4 +1,4 @@
-import type { Ship, ShipClass, FleetData, CargoItem, Module } from '$lib/types/game';
+import type { Ship, ShipClass, FleetData, CargoItem, Module, ShowroomShip, CommissionOrder, CommissionQuote, ShipListing } from '$lib/types/game';
 
 class ShipStore {
   current = $state<Ship | null>(null);
@@ -7,6 +7,22 @@ class ShipStore {
   activeShipId = $state<string | null>(null);
   // Full module data (from state_update.modules)
   moduleData = $state<Module[]>([]);
+
+  // ---- Shipyard: Showroom ----
+  showroom = $state<ShowroomShip[]>([]);
+  showroomLoading = $state<boolean>(false);
+  showroomTip = $state<string>('');
+  showroomLevel = $state<number>(0);
+
+  // ---- Shipyard: Commission ----
+  commissions = $state<CommissionOrder[]>([]);
+  commissionsLoading = $state<boolean>(false);
+  commissionQuote = $state<CommissionQuote | null>(null);
+  commissionQuoteLoading = $state<boolean>(false);
+
+  // ---- Shipyard: Player Exchange ----
+  shipListings = $state<ShipListing[]>([]);
+  shipListingsLoading = $state<boolean>(false);
 
   // ---- Getters ----
 
@@ -76,11 +92,41 @@ class ShipStore {
     this.activeShipId = data.active_ship_id;
   }
 
+  // ---- Shipyard state updates ----
+
+  setShowroom(ships: ShowroomShip[], tip?: string, level?: number) {
+    this.showroom = ships;
+    this.showroomLoading = false;
+    this.showroomTip = tip ?? '';
+    this.showroomLevel = level ?? 0;
+  }
+
+  setCommissions(orders: CommissionOrder[]) {
+    this.commissions = orders;
+    this.commissionsLoading = false;
+  }
+
+  setCommissionQuote(quote: CommissionQuote | null) {
+    this.commissionQuote = quote;
+    this.commissionQuoteLoading = false;
+  }
+
+  setShipListings(listings: ShipListing[]) {
+    this.shipListings = listings;
+    this.shipListingsLoading = false;
+  }
+
   reset() {
     this.current = null;
     this.fleet = [];
     this.activeShipId = null;
     this.moduleData = [];
+    this.showroom = [];
+    this.showroomTip = '';
+    this.showroomLevel = 0;
+    this.commissions = [];
+    this.commissionQuote = null;
+    this.shipListings = [];
   }
 }
 

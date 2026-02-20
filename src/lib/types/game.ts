@@ -151,6 +151,134 @@ export interface ShipClass {
   required_skills?: Record<string, number>;
 }
 
+// ---- Shipyard: Showroom ----
+
+export interface ShowroomShip {
+  ship_class: string;
+  name: string;
+  category?: string;
+  scale?: number;
+  price: number;
+  stock?: number;
+  // Ship stats
+  hull?: number;
+  shield?: number;
+  fuel?: number;
+  cargo_capacity?: number;
+  cpu_capacity?: number;
+  power_capacity?: number;
+  weapon_slots?: number;
+  defense_slots?: number;
+  utility_slots?: number;
+  armor?: number;
+  speed?: number;
+  description?: string;
+}
+
+// ---- Shipyard: Commission ----
+
+export type CommissionStatus = 'pending' | 'building' | 'ready' | 'cancelled';
+
+export interface CommissionOrder {
+  commission_id: string;
+  ship_class: string;
+  ship_name?: string;
+  status: CommissionStatus;
+  base_id?: string;
+  base_name?: string;
+  cost?: number;
+  provide_materials?: boolean;
+  started_at?: string;
+  estimated_completion?: number;  // tick
+  progress?: number;             // 0-100
+  message?: string;
+}
+
+export interface CommissionQuote {
+  ship_class: string;
+  ship_name?: string;
+
+  // Pricing
+  credits_only_total?: number;
+  provide_materials_total?: number;
+  labor_cost?: number;
+  material_cost?: number;
+  player_credits?: number;
+
+  // Affordability flags
+  can_commission?: boolean;
+  can_afford_credits_only?: boolean;
+  can_afford_provide_materials?: boolean;
+
+  // Build info
+  build_materials?: { item_id: string; name?: string; quantity: number }[];
+  build_time?: number;
+
+  // Shipyard tier
+  shipyard_tier_here?: number;
+  shipyard_tier_required?: number;
+
+  // Issues
+  blockers?: string[];
+  message?: string;
+}
+
+// ---- Ship Catalog (REST API /api/ships) ----
+
+export interface ShipCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  class: string;
+  category: string;
+  empire: string;
+  empire_name: string;
+  tier: number;
+  scale: number;
+  price: number;
+  lore: string;
+  base_hull: number;
+  base_shield: number;
+  base_shield_recharge: number;
+  base_armor: number;
+  base_speed: number;
+  base_fuel: number;
+  cargo_capacity: number;
+  cpu_capacity: number;
+  power_capacity: number;
+  weapon_slots: number;
+  defense_slots: number;
+  utility_slots: number;
+  shipyard_tier: number;
+  build_materials: { item_id: string; item_name: string; quantity: number }[];
+  flavor_tags: string[];
+}
+
+export interface ShipCatalogResponse {
+  classes: string[];
+  empires: { id: string; name: string }[];
+  ships: ShipCatalogEntry[];
+}
+
+// ---- Shipyard: Player Ship Exchange ----
+
+export interface ShipListing {
+  listing_id: string;
+  ship_id: string;
+  ship_class?: string;
+  ship_name?: string;
+  price: number;
+  seller_id?: string;
+  seller_name?: string;
+  base_id?: string;
+  base_name?: string;
+  // Ship stats
+  hull?: string | number;
+  modules?: number;
+  cargo_used?: number;
+  listed_at?: string;
+}
+
 // ---- Module ----
 
 export interface Module {
