@@ -5,6 +5,8 @@
   import LinearProgress from '@smui/linear-progress';
   import { facilityStore } from '$lib/stores/facility.svelte';
   import { craftingStore } from '$lib/stores/crafting.svelte';
+  import { connectionStore } from '$lib/stores/connection.svelte';
+  import { baseStore } from '$lib/stores/base.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
@@ -208,6 +210,20 @@
   let hasQuarters = $derived(
     facilityStore.playerFacilities.some(f => f.owner_id === myPlayerId && f.personal_service === 'quarters')
   );
+
+  // --- Rent summary ---
+  const CYCLE_TICKS = 100;
+  let totalRentPerCycle = $derived(
+    myFacilities.reduce((sum, f) => sum + (f.rent_per_cycle ?? 0), 0)
+  );
+
+  function formatDuration(totalSeconds: number): string {
+    if (totalSeconds <= 0) return '0:00:00';
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
 </script>
 
 <div class="facility-container">
@@ -267,12 +283,6 @@
             <div class="detail-item">
               <span class="detail-label">Rent</span>
               <span class="mono">₡{ft.rent_per_cycle}/cycle</span>
-            </div>
-          {/if}
-          {#if ft.labor_cost}
-            <div class="detail-item">
-              <span class="detail-label">Labor Cost</span>
-              <span class="mono">₡{ft.labor_cost}</span>
             </div>
           {/if}
           {#if ft.personal_service}
@@ -363,6 +373,36 @@
       <LinearProgress indeterminate />
     {/if}
 
+    <!-- Rent Summary -->
+    {#if myFacilities.length > 0 && totalRentPerCycle > 0}
+      {@const storedCredits = baseStore.credits}
+      {@const runwayCycles = totalRentPerCycle > 0 ? Math.floor(storedCredits / totalRentPerCycle) : 0}
+      {@const runwayTicks = runwayCycles * CYCLE_TICKS}
+      {@const runwaySeconds = runwayTicks * connectionStore.tickRate}
+      <div class="rent-summary">
+        <div class="rent-summary-row">
+          <span class="material-icons rent-summary-icon">payments</span>
+          <span class="rent-summary-label">Rent</span>
+          <span class="mono credits">₡{totalRentPerCycle.toLocaleString()}</span>
+          <span class="rent-summary-sub">/cycle ({CYCLE_TICKS} ticks)</span>
+        </div>
+        <div class="rent-summary-row">
+          <span class="material-icons rent-summary-icon">account_balance</span>
+          <span class="rent-summary-label">Station Credits</span>
+          <span class="mono credits">₡{storedCredits.toLocaleString()}</span>
+        </div>
+        <div class="rent-summary-row runway" class:runway-low={runwayCycles <= 3} class:runway-critical={runwayCycles <= 1}>
+          <span class="material-icons rent-summary-icon">timeline</span>
+          <span class="rent-summary-label">Runway</span>
+          <span class="mono">{runwayCycles} cycles</span>
+          <span class="rent-summary-sep">·</span>
+          <span class="mono">{runwayTicks.toLocaleString()} ticks</span>
+          <span class="rent-summary-sep">·</span>
+          <span class="mono">{formatDuration(runwaySeconds)}</span>
+        </div>
+      </div>
+    {/if}
+
     <!-- My Facilities (owned by current player) -->
     {#if myFacilities.length > 0}
       <Card class="space-card">
@@ -371,6 +411,9 @@
           <div class="fac-list">
             {#each myFacilities as fac}
               {@const isExpanded = expandedFacIds.has(fac.facility_id)}
+              {@const deadline = fac.rent_paid_until_tick ? fac.rent_paid_until_tick + CYCLE_TICKS : null}
+              {@const ticksRemaining = deadline != null ? deadline - connectionStore.tick : null}
+              {@const rentProgress = ticksRemaining != null ? Math.max(0, Math.min(1, ticksRemaining / CYCLE_TICKS)) : null}
               <button class="fac-row" class:expanded={isExpanded} onclick={() => toggleExpand(fac.facility_id)}>
                 <div class="fac-top">
                   <div class="fac-info">
@@ -387,6 +430,32 @@
                         <span class="bonus-badge">+{fac.bonus_value}% {fac.bonus_type}</span>
                       {/if}
                     </span>
+                    {#if fac.rent_paid_until_tick && ticksRemaining != null}
+                      <div class="rent-timer">
+                        <span class="material-icons rent-timer-icon" style="font-size:12px"
+                          class:overdue={ticksRemaining <= 0}
+                          class:warning={ticksRemaining > 0 && rentProgress != null && rentProgress < 0.25}
+                          class:ok={ticksRemaining > 0 && (rentProgress == null || rentProgress >= 0.25)}
+                        >{ticksRemaining <= 0 ? 'error' : 'schedule'}</span>
+                        <span class="rent-timer-text mono" class:overdue={ticksRemaining <= 0} class:warning={ticksRemaining > 0 && rentProgress != null && rentProgress < 0.25}>
+                          {#if ticksRemaining <= 0}
+                            OVERDUE ({Math.abs(ticksRemaining)} ticks)
+                          {:else}
+                            {ticksRemaining}/{CYCLE_TICKS} ticks
+                          {/if}
+                        </span>
+                        {#if rentProgress != null}
+                          <div class="rent-gauge">
+                            <div class="rent-gauge-fill"
+                              class:overdue={ticksRemaining <= 0}
+                              class:warning={ticksRemaining > 0 && rentProgress < 0.25}
+                              class:caution={ticksRemaining > 0 && rentProgress >= 0.25 && rentProgress < 0.5}
+                              style="width:{Math.max(0, rentProgress * 100)}%"
+                            ></div>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                   <div class="fac-actions">
                     {#if !fac.maintenance_satisfied}
@@ -422,8 +491,8 @@
                       {#if fac.level}
                         <span class="detail-kv"><span class="detail-k">Level</span> {fac.level}</span>
                       {/if}
-                      {#if fac.rent_paid_until_tick}
-                        <span class="detail-kv"><span class="detail-k">Rent until</span> tick {fac.rent_paid_until_tick}</span>
+                      {#if deadline}
+                        <span class="detail-kv"><span class="detail-k">Next payment</span> tick {deadline.toLocaleString()}</span>
                       {/if}
                     </div>
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1098,6 +1167,70 @@
 
   .rent-label { font-size: 0.65rem; color: #78909c; }
   .maint-warn { display: flex; align-items: center; }
+
+  /* Rent timer (ticks remaining gauge) */
+  .rent-timer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+  }
+  .rent-timer-icon { color: #4caf50; }
+  .rent-timer-icon.warning { color: #ff9800; }
+  .rent-timer-icon.overdue { color: #f44336; }
+  .rent-timer-icon.ok { color: #4caf50; }
+  .rent-timer-text {
+    font-size: 0.63rem;
+    color: #78909c;
+  }
+  .rent-timer-text.overdue { color: #f44336; font-weight: 600; }
+  .rent-timer-text.warning { color: #ff9800; }
+  .rent-gauge {
+    width: 60px;
+    height: 5px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .rent-gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: #4caf50;
+    transition: width 0.3s ease;
+  }
+  .rent-gauge-fill.caution { background: #ff9800; }
+  .rent-gauge-fill.warning { background: #f44336; }
+  .rent-gauge-fill.overdue { background: #f44336; width: 100% !important; opacity: 0.4; }
+
+  /* Rent Summary */
+  .rent-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    border: 1px solid rgba(79,195,247,0.12);
+    border-radius: 4px;
+    background: rgba(79,195,247,0.03);
+  }
+  .rent-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.73rem;
+    color: #b0bec5;
+    flex-wrap: wrap;
+  }
+  .rent-summary-icon { font-size: 15px; color: #546e7a; width: 18px; text-align: center; }
+  .rent-summary-label { color: #78909c; min-width: 100px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.3px; }
+  .rent-summary-sub { font-size: 0.63rem; color: #546e7a; }
+  .rent-summary-sep { color: #37474f; font-size: 0.6rem; }
+  .rent-summary-row.runway { color: #4caf50; }
+  .rent-summary-row.runway .rent-summary-icon { color: #4caf50; }
+  .rent-summary-row.runway-low { color: #ff9800; }
+  .rent-summary-row.runway-low .rent-summary-icon { color: #ff9800; }
+  .rent-summary-row.runway-critical { color: #f44336; }
+  .rent-summary-row.runway-critical .rent-summary-icon { color: #f44336; }
 
   /* Badges */
   .cat-badge {

@@ -99,13 +99,16 @@ class FacilityStore {
   setSelectedType(detail: FacilityType | null) {
     this.selectedType = detail;
     this.typesLoading = false;
-    // Cache from detail view too
-    if (detail?.recipe_id) {
-      this._recipeToFacility.set(detail.recipe_id, {
-        id: detail.type_id ?? detail.id,
-        name: detail.name,
-        build_cost: detail.build_cost,
-      });
+    if (detail) {
+      const typeId = detail.type_id ?? detail.id;
+      // Cache recipe mapping from detail view
+      if (detail.recipe_id) {
+        this._recipeToFacility.set(detail.recipe_id, {
+          id: typeId,
+          name: detail.name,
+          build_cost: detail.build_cost,
+        });
+      }
     }
   }
 
@@ -125,9 +128,10 @@ class FacilityStore {
   /** Cache recipe→facility mappings from a batch of facility types */
   cacheRecipeMappings(types: FacilityType[]) {
     for (const ft of types) {
+      const typeId = ft.type_id ?? ft.id;
       if (ft.recipe_id) {
         this._recipeToFacility.set(ft.recipe_id, {
-          id: ft.type_id ?? ft.id,
+          id: typeId,
           name: ft.name,
           build_cost: ft.build_cost,
         });
