@@ -30,7 +30,7 @@ export { actionQueueStore } from './actionQueue.svelte';
 export { shipCatalogStore } from './shipCatalog.svelte';
 
 // --- Multi-user support ---
-// Import all stores for the reset function
+// Import all stores for the reset/reload functions
 import { connectionStore } from './connection.svelte';
 import { playerStore } from './player.svelte';
 import { shipStore } from './ship.svelte';
@@ -38,6 +38,9 @@ import { systemStore } from './system.svelte';
 import { combatStore } from './combat.svelte';
 import { battleStore } from './battle.svelte';
 import { marketStore } from './market.svelte';
+import { marketMemoStore } from './marketMemo.svelte';
+import { systemMemoStore } from './systemMemo.svelte';
+import { storageMemoStore } from './storageMemo.svelte';
 import { craftingStore } from './crafting.svelte';
 import { factionStore } from './faction.svelte';
 import { baseStore } from './base.svelte';
@@ -49,6 +52,8 @@ import { forumStore } from './forum.svelte';
 import { missionStore } from './mission.svelte';
 import { loopStore } from './loop.svelte';
 import { scavengerStore } from './scavenger.svelte';
+import { explorerStore } from './explorer.svelte';
+import { bookmarkStore } from './bookmark.svelte';
 import { tradeStore } from './trade.svelte';
 import { actionQueueStore } from './actionQueue.svelte';
 import { shipCatalogStore } from './shipCatalog.svelte';
@@ -81,4 +86,22 @@ export function resetAllGameStores() {
   tradeStore.reset();
   actionQueueStore.clear();
   shipCatalogStore.reset();
+}
+
+/**
+ * Reload all user-specific stores from localStorage.
+ * Called after setCurrentUser() on login to load the correct user's data.
+ * Handles migration from old non-user-scoped keys to new user-scoped keys.
+ */
+export function reloadUserStores() {
+  marketMemoStore.reload();
+  systemMemoStore.reload();
+  storageMemoStore.reload();
+  bookmarkStore.reload();
+  contactsStore.reload();
+  loopStore.reload();
+  explorerStore.reload();
+  craftingStore.reload();
+  forumStore.reload();
+  playerStore.reload();
 }

@@ -1,5 +1,5 @@
 import type { ForumThread, ForumReply, ForumCategory } from '$lib/types/game';
-import { prefixKey } from './storagePrefix';
+import { userKey, migrateToUserKey } from './storagePrefix';
 
 const MY_THREADS_KEY = 'sm_my_threads';
 
@@ -13,7 +13,7 @@ interface MyThreadRef {
 function loadMyThreads(): MyThreadRef[] {
   if (typeof localStorage === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(prefixKey(MY_THREADS_KEY));
+    const raw = localStorage.getItem(userKey(MY_THREADS_KEY));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -23,7 +23,7 @@ function loadMyThreads(): MyThreadRef[] {
 function saveMyThreads(threads: MyThreadRef[]) {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(prefixKey(MY_THREADS_KEY), JSON.stringify(threads));
+    localStorage.setItem(userKey(MY_THREADS_KEY), JSON.stringify(threads));
   } catch { /* ignore */ }
 }
 
@@ -45,6 +45,12 @@ class ForumStore {
   // Loading states
   loading = $state(false);
   loadingThread = $state(false);
+
+  /** Reload myThreads from localStorage after user switch. Migrates old data if needed. */
+  reload() {
+    migrateToUserKey(MY_THREADS_KEY);
+    this.myThreads = loadMyThreads();
+  }
 
   setThreadList(data: { threads: ForumThread[]; page: number; total: number; per_page: number; categories?: string[] }) {
     this.threads = data.threads;

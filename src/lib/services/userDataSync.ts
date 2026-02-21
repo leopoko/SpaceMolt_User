@@ -29,7 +29,7 @@ import { bookmarkStore } from '$lib/stores/bookmark.svelte';
 import { contactsStore } from '$lib/stores/contacts.svelte';
 import { explorerStore } from '$lib/stores/explorer.svelte';
 import { eventsStore } from '$lib/stores/events.svelte';
-import { prefixKey } from '$lib/stores/storagePrefix';
+import { userKey } from '$lib/stores/storagePrefix';
 
 export interface UserSyncData {
   marketMemos?: Record<string, unknown>;
@@ -110,35 +110,35 @@ class UserDataSyncService {
   private collectLocalData(): UserSyncData {
     const data: UserSyncData = { savedAt: new Date().toISOString() };
     try {
-      const mm = localStorage.getItem(prefixKey(SYNC_KEYS.marketMemos));
+      const mm = localStorage.getItem(userKey(SYNC_KEYS.marketMemos));
       if (mm) data.marketMemos = JSON.parse(mm);
     } catch { /* ignore */ }
     try {
-      const sm = localStorage.getItem(prefixKey(SYNC_KEYS.systemMemos));
+      const sm = localStorage.getItem(userKey(SYNC_KEYS.systemMemos));
       if (sm) data.systemMemos = JSON.parse(sm);
     } catch { /* ignore */ }
     try {
-      const stm = localStorage.getItem(prefixKey(SYNC_KEYS.storageMemos));
+      const stm = localStorage.getItem(userKey(SYNC_KEYS.storageMemos));
       if (stm) data.storageMemos = JSON.parse(stm);
     } catch { /* ignore */ }
     try {
-      const bk = localStorage.getItem(prefixKey(SYNC_KEYS.bookmarks));
+      const bk = localStorage.getItem(userKey(SYNC_KEYS.bookmarks));
       if (bk) data.bookmarks = JSON.parse(bk);
     } catch { /* ignore */ }
     try {
-      const cf = localStorage.getItem(prefixKey(SYNC_KEYS.craftingFavorites));
+      const cf = localStorage.getItem(userKey(SYNC_KEYS.craftingFavorites));
       if (cf) data.craftingFavorites = JSON.parse(cf);
     } catch { /* ignore */ }
     try {
-      const ct = localStorage.getItem(prefixKey(SYNC_KEYS.contacts));
+      const ct = localStorage.getItem(userKey(SYNC_KEYS.contacts));
       if (ct) data.contacts = JSON.parse(ct);
     } catch { /* ignore */ }
     try {
-      const lp = localStorage.getItem(prefixKey(SYNC_KEYS.loops));
+      const lp = localStorage.getItem(userKey(SYNC_KEYS.loops));
       if (lp) data.loops = JSON.parse(lp);
     } catch { /* ignore */ }
     try {
-      const ex = localStorage.getItem(prefixKey(SYNC_KEYS.explorer));
+      const ex = localStorage.getItem(userKey(SYNC_KEYS.explorer));
       if (ex) data.explorer = JSON.parse(ex);
     } catch { /* ignore */ }
     return data;
@@ -148,7 +148,7 @@ class UserDataSyncService {
   private mergeServerData(server: UserSyncData) {
     // Market memos: merge by station name, latest savedAt wins
     if (server.marketMemos) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.marketMemos));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.marketMemos));
       const local: Record<string, { savedAt?: string }> = localRaw ? JSON.parse(localRaw) : {};
       const merged = { ...local };
       for (const [key, val] of Object.entries(server.marketMemos)) {
@@ -158,13 +158,13 @@ class UserDataSyncService {
           merged[key] = sv;
         }
       }
-      localStorage.setItem(prefixKey(SYNC_KEYS.marketMemos), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.marketMemos), JSON.stringify(merged));
       marketMemoStore.memos = merged as typeof marketMemoStore.memos;
     }
 
     // System memos: merge by system ID, latest savedAt wins
     if (server.systemMemos) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.systemMemos));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.systemMemos));
       const local: Record<string, { savedAt?: string }> = localRaw ? JSON.parse(localRaw) : {};
       const merged = { ...local };
       for (const [key, val] of Object.entries(server.systemMemos)) {
@@ -174,13 +174,13 @@ class UserDataSyncService {
           merged[key] = sv;
         }
       }
-      localStorage.setItem(prefixKey(SYNC_KEYS.systemMemos), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.systemMemos), JSON.stringify(merged));
       systemMemoStore.memos = merged as typeof systemMemoStore.memos;
     }
 
     // Storage memos: merge by station name, latest savedAt wins
     if (server.storageMemos) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.storageMemos));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.storageMemos));
       const local: Record<string, { savedAt?: string }> = localRaw ? JSON.parse(localRaw) : {};
       const merged = { ...local };
       for (const [key, val] of Object.entries(server.storageMemos)) {
@@ -190,41 +190,41 @@ class UserDataSyncService {
           merged[key] = sv;
         }
       }
-      localStorage.setItem(prefixKey(SYNC_KEYS.storageMemos), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.storageMemos), JSON.stringify(merged));
       storageMemoStore.memos = merged as typeof storageMemoStore.memos;
     }
 
     // Bookmarks: union of both sets
     if (server.bookmarks) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.bookmarks));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.bookmarks));
       const local: string[] = localRaw ? JSON.parse(localRaw) : [];
       const merged = [...new Set([...local, ...server.bookmarks])];
-      localStorage.setItem(prefixKey(SYNC_KEYS.bookmarks), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.bookmarks), JSON.stringify(merged));
       bookmarkStore.ids = new Set(merged);
     }
 
     // Crafting favorites: union
     if (server.craftingFavorites) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.craftingFavorites));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.craftingFavorites));
       const local: string[] = localRaw ? JSON.parse(localRaw) : [];
       const merged = [...new Set([...local, ...server.craftingFavorites])];
-      localStorage.setItem(prefixKey(SYNC_KEYS.craftingFavorites), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.craftingFavorites), JSON.stringify(merged));
     }
 
     // Contacts: server wins (more complete source)
     if (server.contacts) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.contacts));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.contacts));
       const local = localRaw ? JSON.parse(localRaw) : { contacts: {}, history: {} };
       const merged = {
         contacts: { ...local.contacts, ...server.contacts.contacts },
         history: { ...local.history, ...server.contacts.history },
       };
-      localStorage.setItem(prefixKey(SYNC_KEYS.contacts), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.contacts), JSON.stringify(merged));
     }
 
     // Loops: merge by ID
     if (server.loops && Array.isArray(server.loops)) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.loops));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.loops));
       const local: { id?: string }[] = localRaw ? JSON.parse(localRaw) : [];
       const localIds = new Set(local.map(l => l.id));
       const merged = [...local];
@@ -234,15 +234,15 @@ class UserDataSyncService {
           merged.push(sl);
         }
       }
-      localStorage.setItem(prefixKey(SYNC_KEYS.loops), JSON.stringify(merged));
+      localStorage.setItem(userKey(SYNC_KEYS.loops), JSON.stringify(merged));
     }
 
     // Explorer: server wins if local is empty
     if (server.explorer) {
-      const localRaw = localStorage.getItem(prefixKey(SYNC_KEYS.explorer));
+      const localRaw = localStorage.getItem(userKey(SYNC_KEYS.explorer));
       const local = localRaw ? JSON.parse(localRaw) : null;
       if (!local?.homeBaseSystemId && server.explorer.homeBaseSystemId) {
-        localStorage.setItem(prefixKey(SYNC_KEYS.explorer), JSON.stringify(server.explorer));
+        localStorage.setItem(userKey(SYNC_KEYS.explorer), JSON.stringify(server.explorer));
         explorerStore.homeBaseSystemId = server.explorer.homeBaseSystemId;
       }
     }

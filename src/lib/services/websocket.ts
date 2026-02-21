@@ -32,6 +32,8 @@ import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 import { tradeStore } from '$lib/stores/trade.svelte';
 import { userDataSync } from '$lib/services/userDataSync';
+import { setCurrentUser } from '$lib/stores/storagePrefix';
+import { reloadUserStores } from '$lib/stores';
 
 // All server messages use { type, payload: {...} }.
 // p() extracts payload, falling back to the message itself for robustness.
@@ -208,6 +210,9 @@ class WebSocketService {
         const pl = p<{ player?: Record<string, unknown>; ship?: Record<string, unknown>; system?: Record<string, unknown> }>(msg);
         authStore.isLoggedIn = true;
         authStore.username = (pl.player?.username as string) ?? authStore.savedUsername;
+        // Set current user for user-scoped localStorage keys, then reload user stores
+        setCurrentUser(authStore.username);
+        reloadUserStores();
         if (pl.player) playerStore.update(pl.player as never);
         if (pl.ship) shipStore.updateCurrent(pl.ship as never);
         if (pl.system) systemStore.update(pl.system as never);
