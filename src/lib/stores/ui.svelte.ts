@@ -47,6 +47,11 @@ class UiStore {
     this.activeTab = TABS.find(t => t.label === 'Crafting') ?? TABS[5];
   }
 
+  /** Navigate to Navigation tab */
+  navigateToNavigation() {
+    this.activeTab = TABS.find(t => t.label === 'Navigation') ?? TABS[0];
+  }
+
   setDarkMode(val: boolean) {
     this.darkMode = val;
     if (typeof localStorage !== 'undefined') {
