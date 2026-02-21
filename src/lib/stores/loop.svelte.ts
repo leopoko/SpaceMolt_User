@@ -4,6 +4,9 @@ import { eventsStore } from '$lib/stores/events.svelte';
 import { ws } from '$lib/services/websocket';
 import { shipStore } from '$lib/stores/ship.svelte';
 import { baseStore } from '$lib/stores/base.svelte';
+import { playerStore } from '$lib/stores/player.svelte';
+import { systemStore } from '$lib/stores/system.svelte';
+import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { userDataSync } from '$lib/services/userDataSync';
 import { userKey, migrateToUserKey } from './storagePrefix';
 
@@ -20,6 +23,8 @@ export interface SavedLoop {
   id: string;
   stationId: string;
   stationName: string;
+  /** The system where the loop's base station is located. */
+  systemId?: string;
   name: string;
   steps: LoopStep[];
   createdAt: string;
@@ -31,6 +36,8 @@ class LoopStore {
   /** The station where recording started. */
   recordingStationId = $state<string | null>(null);
   recordingStationName = $state<string | null>(null);
+  /** The system where recording started. */
+  recordingSystemId = $state<string | null>(null);
 
   /** All saved loops (loaded from localStorage). */
   savedLoops = $state<SavedLoop[]>([]);
@@ -40,6 +47,8 @@ class LoopStore {
   playingLoopId = $state<string | null>(null);
   currentIteration = $state(0);
   totalIterations = $state(0); // 0 = infinite
+  /** Whether the loop is in error recovery mode (returning to base). */
+  isRecovering = $state(false);
 
   constructor() {
     this.loadFromStorage();
@@ -78,6 +87,7 @@ class LoopStore {
     this.isRecording = true;
     this.recordingStationId = stationId;
     this.recordingStationName = stationName;
+    this.recordingSystemId = playerStore.system_id || null;
     actionQueueStore.recordingMode = true;
     // Clear any existing queue
     actionQueueStore.clearQueue();
@@ -89,6 +99,7 @@ class LoopStore {
     this.isRecording = false;
     this.recordingStationId = null;
     this.recordingStationName = null;
+    this.recordingSystemId = null;
     actionQueueStore.recordingMode = false;
     actionQueueStore.clearQueue();
     eventsStore.add({ type: 'info', message: '[Loop] 録画キャンセル' });
@@ -106,6 +117,7 @@ class LoopStore {
       id: `loop_${Date.now()}`,
       stationId: this.recordingStationId ?? '',
       stationName: this.recordingStationName ?? '',
+      systemId: this.recordingSystemId ?? (playerStore.system_id || undefined),
       name: name || `Loop @ ${this.recordingStationName ?? 'Unknown'}`,
       steps: commands.map(c => ({ label: c.label, command: c.command })),
       createdAt: new Date().toISOString(),
@@ -125,6 +137,7 @@ class LoopStore {
     this.isRecording = false;
     this.recordingStationId = null;
     this.recordingStationName = null;
+    this.recordingSystemId = null;
     actionQueueStore.recordingMode = false;
     actionQueueStore.clearQueue();
 
@@ -174,6 +187,7 @@ class LoopStore {
     this.playingLoopId = null;
     this.currentIteration = 0;
     this.totalIterations = 0;
+    this.isRecovering = false;
     // Clear remaining queue items
     actionQueueStore.clearQueue();
     eventsStore.add({ type: 'info', message: '[Loop] 再生停止' });
@@ -222,7 +236,7 @@ class LoopStore {
   }
 
   /** Convert a LoopStep into an executable action. */
-  private replayCommand(step: LoopStep): { label: string; execute: () => void; opts?: { continueOnError?: boolean; command?: ActionCommand } } {
+  private replayCommand(step: LoopStep): { label: string; execute: () => void; opts?: { continueOnError?: boolean; command?: ActionCommand; persistent?: boolean } } {
     const cmd = step.command;
     const opts = { command: cmd, continueOnError: false };
 
@@ -388,6 +402,16 @@ class LoopStore {
           opts,
         };
 
+      case 'wait':
+        // No-op action that simply consumes a tick (1-tick delay)
+        return {
+          label: step.label || 'Wait 1 tick',
+          execute: () => {
+            ws.getStatus(); // harmless query to consume the tick slot
+          },
+          opts,
+        };
+
       default:
         // Unknown command — log warning and no-op
         return {
@@ -400,6 +424,279 @@ class LoopStore {
     }
   }
 
+  /**
+   * Error codes that are safe to skip during loop playback.
+   * These indicate the action was unnecessary (already done), not a real failure.
+   */
+  private static readonly SKIPPABLE_ERROR_CODES = new Set([
+    // Resource already at maximum — action was simply redundant
+    'hull_full',        // "Hull is already at maximum integrity"
+    'tank_full',        // "Fuel tank is already full"
+    'shield_full',      // Shield already full (if exists)
+    'already_docked',   // Already docked at this station
+    'already_undocked', // Already undocked
+    'already_repaired', // Variant of hull_full
+    'no_damage',        // No damage to repair
+    // Timing issues — safe to skip, next tick will retry naturally
+    'already_pending',  // "Another action is already pending"
+    'action_pending',   // Variant
+    // Storage edge cases — not worth stopping a loop
+    'nothing_to_deposit',   // No cargo to deposit
+    'nothing_to_withdraw',  // No items to withdraw
+    'cargo_empty',          // Cargo is empty
+    'storage_empty',        // Storage is empty
+  ]);
+
+  /**
+   * Check if an error is safe to skip during loop playback.
+   * Returns true if the loop should silently continue to the next step.
+   */
+  isSkippableError(code?: string, message?: string): boolean {
+    if (!this.isPlaying) return false;
+
+    // Check error code directly
+    if (code && LoopStore.SKIPPABLE_ERROR_CODES.has(code)) return true;
+
+    // Fallback: pattern-match on message text for servers that don't send codes
+    if (message) {
+      const msg = message.toLowerCase();
+      if (msg.includes('already at maximum') || msg.includes('already full')) return true;
+      if (msg.includes('no repairs needed') || msg.includes('no refueling needed')) return true;
+      if (msg.includes('already docked') || msg.includes('already undocked')) return true;
+      if (msg.includes('nothing to deposit') || msg.includes('nothing to withdraw')) return true;
+      if (msg.includes('already pending') || msg.includes('action is already pending')) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Start error recovery: return to the loop's base station and restart the loop.
+   * Called when an error occurs during loop playback.
+   * Each recovery step is separated by a wait action (1-tick interval).
+   */
+  startRecovery() {
+    if (!this.isPlaying || !this.playingLoopId) return;
+
+    const loop = this.savedLoops.find(l => l.id === this.playingLoopId);
+    if (!loop) {
+      this.stopLoop();
+      return;
+    }
+
+    // Clear remaining queue items from the failed iteration
+    actionQueueStore.clear();
+    this.isRecovering = true;
+
+    eventsStore.add({
+      type: 'info',
+      message: `[Loop] エラー発生 — ${loop.stationName} への復帰を開始`
+    });
+
+    const currentSystem = playerStore.system_id;
+    const targetSystem = loop.systemId;
+    const targetStationId = loop.stationId;
+    const isDocked = playerStore.isDocked;
+
+    // Build recovery steps with wait actions between each step
+    const enqueueWait = () => {
+      actionQueueStore.enqueue('Wait 1 tick', () => {
+        ws.getStatus();
+      }, { command: { type: 'wait' }, continueOnError: true });
+    };
+
+    // Step 1: If currently docked somewhere else, undock first
+    if (isDocked) {
+      actionQueueStore.enqueue('[Recovery] Undock', () => ws.undock(), {
+        command: { type: 'undock' },
+        continueOnError: true,
+      });
+      enqueueWait();
+    }
+
+    // Step 2: If in a different system, jump back to the loop's home system
+    if (targetSystem && currentSystem && currentSystem !== targetSystem) {
+      // Check if we can jump directly (adjacent system)
+      const directConnection = systemStore.connections.find(c => c.system_id === targetSystem);
+      if (directConnection) {
+        actionQueueStore.enqueue(`[Recovery] Jump → ${directConnection.system_name}`, () => {
+          ws.jump(targetSystem, directConnection.system_name);
+        }, {
+          command: { type: 'jump', params: { systemId: targetSystem, systemName: directConnection.system_name } },
+          persistent: true,
+          continueOnError: true,
+        });
+        enqueueWait();
+      } else {
+        // Not directly connected — try to find route via system memo connections
+        const route = this.findRouteHome(currentSystem, targetSystem);
+        if (route.length > 0) {
+          for (const hop of route) {
+            actionQueueStore.enqueue(`[Recovery] Jump → ${hop.systemName}`, () => {
+              ws.jump(hop.systemId, hop.systemName);
+            }, {
+              command: { type: 'jump', params: { systemId: hop.systemId, systemName: hop.systemName } },
+              persistent: true,
+              continueOnError: true,
+            });
+            enqueueWait();
+          }
+        } else {
+          // Can't find route — give up recovery
+          eventsStore.add({
+            type: 'error',
+            message: `[Loop] 復帰失敗: ${targetSystem} への経路が不明です`
+          });
+          this.isRecovering = false;
+          this.stopLoop();
+          return;
+        }
+      }
+    }
+
+    // Step 3: Travel to the station POI
+    // Find the station POI in the current system data or memo
+    const stationPoi = this.findStationPoi(targetSystem ?? currentSystem, targetStationId);
+    if (stationPoi) {
+      actionQueueStore.enqueue(`[Recovery] Travel → ${stationPoi.name}`, () => {
+        ws.travel(stationPoi.id);
+      }, {
+        command: { type: 'travel', params: { poiId: stationPoi.id } },
+        continueOnError: true,
+      });
+      enqueueWait();
+    }
+
+    // Step 4: Dock at the station
+    actionQueueStore.enqueue(`[Recovery] Dock @ ${loop.stationName}`, () => {
+      ws.dock(targetStationId);
+    }, {
+      command: { type: 'dock', params: { stationId: targetStationId } },
+      continueOnError: true,
+    });
+    enqueueWait();
+
+    // Step 5: Sentinel to complete recovery and restart loop
+    actionQueueStore.enqueue(`[Recovery] ${loop.name} 再開`, () => {
+      this.onRecoveryComplete();
+    }, { command: { type: '_recovery_sentinel' } });
+  }
+
+  /** Called when recovery steps complete — restart the loop. */
+  private onRecoveryComplete() {
+    this.isRecovering = false;
+
+    if (!this.isPlaying || !this.playingLoopId) return;
+
+    const loop = this.savedLoops.find(l => l.id === this.playingLoopId);
+    if (!loop) {
+      this.stopLoop();
+      return;
+    }
+
+    // Check if we're actually docked at the right station
+    if (!playerStore.isDocked) {
+      eventsStore.add({
+        type: 'error',
+        message: `[Loop] 復帰失敗: ドッキングできませんでした。ループを停止します。`
+      });
+      this.stopLoop();
+      return;
+    }
+
+    eventsStore.add({
+      type: 'info',
+      message: `[Loop] 復帰完了 — ${loop.name} を再開 (イテレーション ${this.currentIteration})`
+    });
+
+    // Restart the current iteration
+    this.enqueueLoopSteps(loop);
+  }
+
+  /**
+   * Find route from current system to target system using system memo data.
+   * BFS through memo connections. Returns array of hops (excluding current system).
+   */
+  private findRouteHome(fromSystem: string, toSystem: string): { systemId: string; systemName: string }[] {
+    // BFS using system memos
+    const visited = new Set<string>();
+    const queue: { systemId: string; path: { systemId: string; systemName: string }[] }[] = [];
+
+    visited.add(fromSystem);
+
+    // Start with connections from the current system (live data + memo)
+    const startConnections = [
+      ...systemStore.connections.map(c => ({ system_id: c.system_id, system_name: c.system_name })),
+    ];
+    // Also add memo connections for current system if available
+    const fromMemo = systemMemoStore.getMemo(fromSystem);
+    if (fromMemo) {
+      for (const mc of fromMemo.connections) {
+        if (!startConnections.find(c => c.system_id === mc.system_id)) {
+          startConnections.push({ system_id: mc.system_id, system_name: mc.system_name });
+        }
+      }
+    }
+
+    for (const conn of startConnections) {
+      if (conn.system_id === toSystem) {
+        return [{ systemId: conn.system_id, systemName: conn.system_name }];
+      }
+      if (!visited.has(conn.system_id)) {
+        visited.add(conn.system_id);
+        queue.push({
+          systemId: conn.system_id,
+          path: [{ systemId: conn.system_id, systemName: conn.system_name }],
+        });
+      }
+    }
+
+    // BFS through memos (max depth 10 to avoid infinite loops)
+    while (queue.length > 0 && queue[0].path.length < 10) {
+      const current = queue.shift()!;
+      const memo = systemMemoStore.getMemo(current.systemId);
+      if (!memo) continue;
+
+      for (const conn of memo.connections) {
+        if (conn.system_id === toSystem) {
+          return [...current.path, { systemId: conn.system_id, systemName: conn.system_name }];
+        }
+        if (!visited.has(conn.system_id)) {
+          visited.add(conn.system_id);
+          queue.push({
+            systemId: conn.system_id,
+            path: [...current.path, { systemId: conn.system_id, systemName: conn.system_name }],
+          });
+        }
+      }
+    }
+
+    return []; // No route found
+  }
+
+  /** Find the station POI in system data or memo. */
+  private findStationPoi(systemId: string, stationId: string): { id: string; name: string } | null {
+    // Check live system data first
+    const livePoi = systemStore.pois.find(p => p.id === stationId);
+    if (livePoi) return { id: livePoi.id, name: livePoi.name };
+
+    // Fall back to system memo
+    const memo = systemMemoStore.getMemo(systemId);
+    if (memo) {
+      const memoPoi = memo.pois.find(p => p.id === stationId);
+      if (memoPoi) return { id: memoPoi.id, name: memoPoi.name };
+    }
+
+    return null;
+  }
+
+  /** Enqueue a single wait action (1-tick delay). Usable outside of loops too. */
+  enqueueWait() {
+    actionQueueStore.enqueue('Wait 1 tick', () => {
+      ws.getStatus();
+    }, { command: { type: 'wait' } });
+  }
+
   reset() {
     if (this.isPlaying) this.stopLoop();
     if (this.isRecording) this.cancelRecording();
@@ -407,6 +704,7 @@ class LoopStore {
     this.playingLoopId = null;
     this.currentIteration = 0;
     this.totalIterations = 0;
+    this.isRecovering = false;
   }
 }
 

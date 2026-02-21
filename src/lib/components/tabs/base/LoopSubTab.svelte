@@ -91,6 +91,12 @@
   function moveRecordedDown(id: number) {
     actionQueueStore.moveDown(id);
   }
+
+  function addWait() {
+    actionQueueStore.enqueue('Wait 1 tick', () => {
+      // no-op during recording mode
+    }, { command: { type: 'wait' } });
+  }
 </script>
 
 {#if !playerStore.isDocked}
@@ -107,24 +113,24 @@
 
         {#if !loopStore.isRecording && !loopStore.isPlaying}
           <p class="hint-text">
-            アクションの流れを録画し、ルーチンワークを自動化します。
-            録画中は他のタブでアクションをキューに追加してください。
+            Record a sequence of actions to automate routine tasks.
+            While recording, add actions from other tabs to the queue.
           </p>
           <Button variant="raised" onclick={startRecording} style="width:100%; margin-top:8px">
             <Label>
               <span class="material-icons btn-icon">fiber_manual_record</span>
-              録画開始
+              Start Recording
             </Label>
           </Button>
         {:else if loopStore.isRecording}
           <div class="recording-banner">
             <span class="rec-dot"></span>
-            REC — {stationName} からのループを記録中
+            REC — Recording loop from {stationName}
           </div>
 
           {#if recordedItems.length > 0}
-            <p class="recorded-count">{recordedItems.length} アクション記録済み
-              ({recordedCommands.length} 再生可能)
+            <p class="recorded-count">{recordedItems.length} actions recorded
+              ({recordedCommands.length} replayable)
             </p>
             <div class="recorded-list">
               {#each recordedItems as item, i}
@@ -134,28 +140,37 @@
                   <span class="rec-label" class:rec-label-dim={!hasCommand}>
                     {item.label}
                     {#if !hasCommand}
-                      <span class="rec-warning" title="コマンド情報なし — 再生不可">⚠</span>
+                      <span class="rec-warning" title="No command data — cannot replay">⚠</span>
                     {/if}
                   </span>
                   <div class="rec-actions">
-                    <button class="rec-btn" onclick={() => moveRecordedUp(item.id)} disabled={i === 0} title="上へ">↑</button>
-                    <button class="rec-btn" onclick={() => moveRecordedDown(item.id)} disabled={i === recordedItems.length - 1} title="下へ">↓</button>
-                    <button class="rec-btn rec-btn-del" onclick={() => removeRecordedItem(item.id)} title="削除">×</button>
+                    <button class="rec-btn" onclick={() => moveRecordedUp(item.id)} disabled={i === 0} title="Move up">↑</button>
+                    <button class="rec-btn" onclick={() => moveRecordedDown(item.id)} disabled={i === recordedItems.length - 1} title="Move down">↓</button>
+                    <button class="rec-btn rec-btn-del" onclick={() => removeRecordedItem(item.id)} title="Remove">×</button>
                   </div>
                 </div>
               {/each}
             </div>
           {:else}
             <p class="empty-hint">
-              他のタブでアクションをキューに追加してください
+              Add actions from other tabs to the queue
             </p>
           {/if}
+
+          <div class="rec-add-wait">
+            <Button variant="outlined" dense onclick={addWait} style="width:100%">
+              <Label>
+                <span class="material-icons btn-icon">hourglass_empty</span>
+                Add Wait (1 tick)
+              </Label>
+            </Button>
+          </div>
 
           <div class="save-form">
             <input
               type="text"
               class="loop-name-input"
-              placeholder="ループ名 (省略可)"
+              placeholder="Loop name (optional)"
               bind:value={loopName}
             />
             <div class="save-actions">
@@ -167,23 +182,28 @@
               >
                 <Label>
                   <span class="material-icons btn-icon">save</span>
-                  保存
+                  Save
                 </Label>
               </Button>
               <Button variant="outlined" onclick={cancelRecording} style="flex:1">
-                <Label>キャンセル</Label>
+                <Label>Cancel</Label>
               </Button>
             </div>
           </div>
         {:else if loopStore.isPlaying}
-          <div class="playing-banner">
-            <span class="material-icons" style="font-size:16px">play_arrow</span>
-            再生中 — イテレーション {loopStore.currentIteration}/{loopStore.totalIterations === 0 ? '∞' : loopStore.totalIterations}
+          <div class="playing-banner" class:recovering={loopStore.isRecovering}>
+            {#if loopStore.isRecovering}
+              <span class="material-icons" style="font-size:16px;color:#ff9800">replay</span>
+              Recovering — Returning to base
+            {:else}
+              <span class="material-icons" style="font-size:16px">play_arrow</span>
+              Playing — Iteration {loopStore.currentIteration}/{loopStore.totalIterations === 0 ? '∞' : loopStore.totalIterations}
+            {/if}
           </div>
           <Button variant="raised" onclick={stopLoop} style="width:100%; margin-top:8px; --mdc-theme-primary:#f44336">
             <Label>
               <span class="material-icons btn-icon">stop</span>
-              停止
+              Stop
             </Label>
           </Button>
         {/if}
@@ -210,8 +230,8 @@
                   <button class="rec-btn" onclick={cancelRename}>×</button>
                 {:else}
                   <span class="loop-name">{loop.name}</span>
-                  <button class="rec-btn" onclick={() => startRename(loop)} title="名前変更">✎</button>
-                  <button class="rec-btn rec-btn-del" onclick={() => deleteLoop(loop.id)} title="削除">×</button>
+                  <button class="rec-btn" onclick={() => startRename(loop)} title="Rename">✎</button>
+                  <button class="rec-btn rec-btn-del" onclick={() => deleteLoop(loop.id)} title="Delete">×</button>
                 {/if}
               </div>
 
@@ -232,7 +252,7 @@
               {#if !loopStore.isPlaying && !loopStore.isRecording}
                 <div class="loop-play-controls">
                   <Button variant="outlined" onclick={() => playLoop(loop, 1)} dense style="flex:1">
-                    <Label>1回</Label>
+                    <Label>1×</Label>
                   </Button>
                   <div class="play-n-row">
                     <input
@@ -247,7 +267,7 @@
                     </Button>
                   </div>
                   <Button variant="raised" onclick={() => playInfinite(loop)} dense style="flex:1">
-                    <Label>∞ 無限</Label>
+                    <Label>∞</Label>
                   </Button>
                 </div>
               {/if}
@@ -255,13 +275,13 @@
           {/each}
         {:else}
           <p class="empty-hint">
-            このステーションに保存されたループはありません
+            No saved loops for this station
           </p>
         {/if}
 
         {#if loopStore.savedLoops.length > stationLoops.length}
           <p class="other-loops-hint">
-            他のステーションに {loopStore.savedLoops.length - stationLoops.length} 件のループがあります
+            {loopStore.savedLoops.length - stationLoops.length} loop(s) saved at other stations
           </p>
         {/if}
       </Content>
@@ -342,6 +362,14 @@
     font-size: 0.75rem;
     color: #4caf50;
     font-weight: 500;
+  }
+  .playing-banner.recovering {
+    background: rgba(255,152,0,0.1);
+    border-color: rgba(255,152,0,0.3);
+    color: #ff9800;
+  }
+  .rec-add-wait {
+    margin: 6px 0;
   }
 
   .recorded-count {

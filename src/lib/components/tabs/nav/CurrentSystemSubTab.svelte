@@ -10,12 +10,13 @@
   import { eventsStore } from '$lib/stores/events.svelte';
   import SystemMap from '$lib/components/SystemMap.svelte';
   import { chatStore } from '$lib/stores/chat.svelte';
+  import { loopStore } from '$lib/stores/loop.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
 
   let nearbyOpen = $state(false);
 
-  // ---- Recording mode: virtual system tracking ----
-  let recordingVirtualSystemId = $derived.by(() => {
-    if (!actionQueueStore.recordingMode) return null;
+  // ---- Virtual system tracking (recording mode + queued jumps with memo) ----
+  let queuedJumpSystemId = $derived.by(() => {
     let virtualId: string | null = null;
     const cur = actionQueueStore.currentAction;
     if (cur) {
@@ -39,11 +40,11 @@
   });
 
   let virtualMemo = $derived(
-    recordingVirtualSystemId ? systemMemoStore.getMemo(recordingVirtualSystemId) : null
+    queuedJumpSystemId ? systemMemoStore.getMemo(queuedJumpSystemId) : null
   );
 
   let isVirtualSystem = $derived(
-    actionQueueStore.recordingMode && recordingVirtualSystemId != null && virtualMemo != null
+    queuedJumpSystemId != null && virtualMemo != null
   );
 
   let displaySystemName = $derived(
@@ -128,6 +129,10 @@
       command: { type: 'jump', params: { systemId, systemName } },
       persistent: true
     });
+    // Auto-switch to Navigation tab if destination has a memo (non-loop, non-recording)
+    if (!loopStore.isPlaying && !actionQueueStore.recordingMode && systemMemoStore.hasMemo(systemId)) {
+      uiStore.navigateToNavigation();
+    }
   }
 
   function doTravel(poiId: string, poiName: string) {
@@ -207,7 +212,7 @@
         {#if isVirtualSystem}
           <div class="virtual-banner">
             <span class="material-icons" style="font-size:14px">memory</span>
-            メモデータで表示中 — 録画モード
+            Showing from memo data
           </div>
         {/if}
 

@@ -31,6 +31,7 @@ import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 import { tradeStore } from '$lib/stores/trade.svelte';
+import { loopStore } from '$lib/stores/loop.svelte';
 import { userDataSync } from '$lib/services/userDataSync';
 import { setCurrentUser } from '$lib/stores/storagePrefix';
 import { reloadUserStores } from '$lib/stores';
@@ -271,6 +272,13 @@ class WebSocketService {
         // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
         if (actionQueueStore.currentContinueOnError) {
           eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
+        } else if (loopStore.isPlaying && loopStore.isSkippableError(pl.code, pl.message)) {
+          // Non-critical error during loop (e.g. hull_full, tank_full) — skip and continue
+          eventsStore.add({ type: 'info', message: `[Loop] スキップ: ${errMsg}` });
+        } else if (loopStore.isPlaying && !loopStore.isRecovering) {
+          // Loop is playing — trigger recovery instead of clearing
+          eventsStore.add({ type: 'error', message: `[Queue] ループエラー — 復帰プロセスを開始` });
+          loopStore.startRecovery();
         } else if (actionQueueStore.currentAction || actionQueueStore.holding || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
@@ -589,6 +597,13 @@ class WebSocketService {
         // But allow continue if the action has continueOnError flag (e.g. iterative Deposit All)
         if (actionQueueStore.currentContinueOnError) {
           eventsStore.add({ type: 'info', message: `[Queue] エラーをスキップして続行` });
+        } else if (loopStore.isPlaying && loopStore.isSkippableError(pl.code, pl.message)) {
+          // Non-critical error during loop (e.g. hull_full, tank_full) — skip and continue
+          eventsStore.add({ type: 'info', message: `[Loop] スキップ: ${errMsg}` });
+        } else if (loopStore.isPlaying && !loopStore.isRecovering) {
+          // Loop is playing — trigger recovery instead of clearing
+          eventsStore.add({ type: 'error', message: `[Queue] ループエラー — 復帰プロセスを開始` });
+          loopStore.startRecovery();
         } else if (actionQueueStore.currentAction || actionQueueStore.holding || actionQueueStore.items.length > 0) {
           eventsStore.add({ type: 'error', message: `[Queue] エラーにより停止 (残り${actionQueueStore.items.length}件キャンセル)` });
           actionQueueStore.clear();
