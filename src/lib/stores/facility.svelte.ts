@@ -38,8 +38,6 @@ class FacilityStore {
 
   // --- Recipe-to-facility mapping (NOT $state to avoid Proxy issues with Map) ---
   private _recipeToFacility = new Map<string, RecipeFacilityInfo>();
-  /** Cache: facility type_id → labor_cost (ticks per rent cycle) */
-  private _typeCycleTicks = new Map<string, number>();
   recipeMappingStatus = $state<'idle' | 'loading' | 'done'>('idle');
   recipeMappingPage = $state(0);
   recipeMappingTotal = $state(0);
@@ -111,10 +109,6 @@ class FacilityStore {
           build_cost: detail.build_cost,
         });
       }
-      // Cache cycle ticks from detail view
-      if (detail.labor_cost != null) {
-        this._typeCycleTicks.set(typeId, detail.labor_cost);
-      }
     }
   }
 
@@ -131,7 +125,7 @@ class FacilityStore {
 
   // --- Recipe mapping methods ---
 
-  /** Cache recipe→facility mappings and cycle ticks from a batch of facility types */
+  /** Cache recipe→facility mappings from a batch of facility types */
   cacheRecipeMappings(types: FacilityType[]) {
     for (const ft of types) {
       const typeId = ft.type_id ?? ft.id;
@@ -142,25 +136,12 @@ class FacilityStore {
           build_cost: ft.build_cost,
         });
       }
-      // Cache cycle ticks (labor_cost = ticks per rent cycle)
-      if (ft.labor_cost != null) {
-        this._typeCycleTicks.set(typeId, ft.labor_cost);
-      }
     }
   }
 
   /** Get facility info for a recipe ID */
   getFacilityForRecipe(recipeId: string): RecipeFacilityInfo | null {
     return this._recipeToFacility.get(recipeId) ?? null;
-  }
-
-  /** Get cycle length in ticks for a facility type (from cache).
-   *  Falls back to rent_per_cycle if not cached (they're often equal). */
-  getCycleTicks(typeId: string, rentPerCycleFallback?: number): number | null {
-    // Read recipeMappingPage to trigger reactivity
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    this.recipeMappingPage;
-    return this._typeCycleTicks.get(typeId) ?? rentPerCycleFallback ?? null;
   }
 
   /** Start background recipe mapping build (fetches all production facility types) */
