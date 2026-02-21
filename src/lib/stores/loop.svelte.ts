@@ -419,6 +419,52 @@ class LoopStore {
   }
 
   /**
+   * Error codes that are safe to skip during loop playback.
+   * These indicate the action was unnecessary (already done), not a real failure.
+   */
+  private static readonly SKIPPABLE_ERROR_CODES = new Set([
+    // Resource already at maximum — action was simply redundant
+    'hull_full',        // "Hull is already at maximum integrity"
+    'tank_full',        // "Fuel tank is already full"
+    'shield_full',      // Shield already full (if exists)
+    'already_docked',   // Already docked at this station
+    'already_undocked', // Already undocked
+    'already_repaired', // Variant of hull_full
+    'no_damage',        // No damage to repair
+    // Timing issues — safe to skip, next tick will retry naturally
+    'already_pending',  // "Another action is already pending"
+    'action_pending',   // Variant
+    // Storage edge cases — not worth stopping a loop
+    'nothing_to_deposit',   // No cargo to deposit
+    'nothing_to_withdraw',  // No items to withdraw
+    'cargo_empty',          // Cargo is empty
+    'storage_empty',        // Storage is empty
+  ]);
+
+  /**
+   * Check if an error is safe to skip during loop playback.
+   * Returns true if the loop should silently continue to the next step.
+   */
+  isSkippableError(code?: string, message?: string): boolean {
+    if (!this.isPlaying) return false;
+
+    // Check error code directly
+    if (code && LoopStore.SKIPPABLE_ERROR_CODES.has(code)) return true;
+
+    // Fallback: pattern-match on message text for servers that don't send codes
+    if (message) {
+      const msg = message.toLowerCase();
+      if (msg.includes('already at maximum') || msg.includes('already full')) return true;
+      if (msg.includes('no repairs needed') || msg.includes('no refueling needed')) return true;
+      if (msg.includes('already docked') || msg.includes('already undocked')) return true;
+      if (msg.includes('nothing to deposit') || msg.includes('nothing to withdraw')) return true;
+      if (msg.includes('already pending') || msg.includes('action is already pending')) return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Start error recovery: return to the loop's base station and restart the loop.
    * Called when an error occurs during loop playback.
    * Each recovery step is separated by a wait action (1-tick interval).
