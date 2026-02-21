@@ -5,6 +5,7 @@
   import LinearProgress from '@smui/linear-progress';
   import { facilityStore } from '$lib/stores/facility.svelte';
   import { craftingStore } from '$lib/stores/crafting.svelte';
+  import { connectionStore } from '$lib/stores/connection.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
@@ -271,8 +272,8 @@
           {/if}
           {#if ft.labor_cost}
             <div class="detail-item">
-              <span class="detail-label">Labor Cost</span>
-              <span class="mono">₡{ft.labor_cost}</span>
+              <span class="detail-label">Cycle Length</span>
+              <span class="mono">{ft.labor_cost} ticks</span>
             </div>
           {/if}
           {#if ft.personal_service}
@@ -371,6 +372,9 @@
           <div class="fac-list">
             {#each myFacilities as fac}
               {@const isExpanded = expandedFacIds.has(fac.facility_id)}
+              {@const cycleTicks = facilityStore.getCycleTicks(fac.type, fac.rent_per_cycle)}
+              {@const ticksRemaining = fac.rent_paid_until_tick ? fac.rent_paid_until_tick - connectionStore.tick : null}
+              {@const rentProgress = (cycleTicks && ticksRemaining != null) ? Math.max(0, Math.min(1, ticksRemaining / cycleTicks)) : null}
               <button class="fac-row" class:expanded={isExpanded} onclick={() => toggleExpand(fac.facility_id)}>
                 <div class="fac-top">
                   <div class="fac-info">
@@ -387,6 +391,32 @@
                         <span class="bonus-badge">+{fac.bonus_value}% {fac.bonus_type}</span>
                       {/if}
                     </span>
+                    {#if fac.rent_paid_until_tick && ticksRemaining != null}
+                      <div class="rent-timer">
+                        <span class="material-icons rent-timer-icon" style="font-size:12px"
+                          class:overdue={ticksRemaining <= 0}
+                          class:warning={ticksRemaining > 0 && rentProgress != null && rentProgress < 0.25}
+                          class:ok={ticksRemaining > 0 && (rentProgress == null || rentProgress >= 0.25)}
+                        >{ticksRemaining <= 0 ? 'error' : 'schedule'}</span>
+                        <span class="rent-timer-text mono" class:overdue={ticksRemaining <= 0} class:warning={ticksRemaining > 0 && rentProgress != null && rentProgress < 0.25}>
+                          {#if ticksRemaining <= 0}
+                            OVERDUE ({Math.abs(ticksRemaining)} ticks)
+                          {:else}
+                            {ticksRemaining}{#if cycleTicks}/{cycleTicks}{/if} ticks
+                          {/if}
+                        </span>
+                        {#if rentProgress != null}
+                          <div class="rent-gauge">
+                            <div class="rent-gauge-fill"
+                              class:overdue={ticksRemaining <= 0}
+                              class:warning={ticksRemaining > 0 && rentProgress < 0.25}
+                              class:caution={ticksRemaining > 0 && rentProgress >= 0.25 && rentProgress < 0.5}
+                              style="width:{Math.max(0, rentProgress * 100)}%"
+                            ></div>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                   <div class="fac-actions">
                     {#if !fac.maintenance_satisfied}
@@ -423,7 +453,10 @@
                         <span class="detail-kv"><span class="detail-k">Level</span> {fac.level}</span>
                       {/if}
                       {#if fac.rent_paid_until_tick}
-                        <span class="detail-kv"><span class="detail-k">Rent until</span> tick {fac.rent_paid_until_tick}</span>
+                        <span class="detail-kv"><span class="detail-k">Paid until</span> tick {fac.rent_paid_until_tick.toLocaleString()}</span>
+                      {/if}
+                      {#if cycleTicks}
+                        <span class="detail-kv"><span class="detail-k">Cycle</span> {cycleTicks} ticks</span>
                       {/if}
                     </div>
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1098,6 +1131,41 @@
 
   .rent-label { font-size: 0.65rem; color: #78909c; }
   .maint-warn { display: flex; align-items: center; }
+
+  /* Rent timer (ticks remaining gauge) */
+  .rent-timer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+  }
+  .rent-timer-icon { color: #4caf50; }
+  .rent-timer-icon.warning { color: #ff9800; }
+  .rent-timer-icon.overdue { color: #f44336; }
+  .rent-timer-icon.ok { color: #4caf50; }
+  .rent-timer-text {
+    font-size: 0.63rem;
+    color: #78909c;
+  }
+  .rent-timer-text.overdue { color: #f44336; font-weight: 600; }
+  .rent-timer-text.warning { color: #ff9800; }
+  .rent-gauge {
+    width: 60px;
+    height: 5px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .rent-gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: #4caf50;
+    transition: width 0.3s ease;
+  }
+  .rent-gauge-fill.caution { background: #ff9800; }
+  .rent-gauge-fill.warning { background: #f44336; }
+  .rent-gauge-fill.overdue { background: #f44336; width: 100% !important; opacity: 0.4; }
 
   /* Badges */
   .cat-badge {
