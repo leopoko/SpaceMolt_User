@@ -434,6 +434,121 @@ export interface BaseInfo {
   condition?: BaseCondition;
 }
 
+// ---- Facilities ----
+
+export interface FacilityBuildMaterial {
+  item_id: string;
+  name: string;
+  quantity: number;
+}
+
+export interface FacilityRecipe {
+  id: string;
+  name: string;
+  crafting_time?: number;
+  inputs: FacilityBuildMaterial[];
+  outputs: FacilityBuildMaterial[];
+}
+
+/** Facility type from the catalog (types action) */
+export interface FacilityType {
+  id: string;
+  type_id?: string;  // present in detail view
+  name: string;
+  category: string;
+  level: number;
+  build_cost: number;
+  buildable: boolean;
+  recipe_id?: string;
+  description?: string;
+  build_materials?: FacilityBuildMaterial[];
+  build_time?: number;
+  labor_cost?: number;
+  rent_per_cycle?: number;
+  recipe?: FacilityRecipe;
+  upgrades_to?: string;
+  upgrades_to_name?: string;
+  bonus_type?: string;
+  bonus_value?: number;
+  hint?: string;
+  personal_service?: string;
+}
+
+export interface FacilityTypeCategories {
+  [key: string]: { count: number; description?: string; buildable?: number };
+}
+
+/** Facility instance at a station (list action) */
+export interface FacilityInstance {
+  facility_id: string;
+  type: string;
+  name: string;
+  category: string;
+  description?: string;
+  active: boolean;
+  maintenance_satisfied?: boolean;
+  rent_per_cycle?: number;
+  recipe_id?: string;
+  // Player-owned
+  owner_id?: string;
+  rent_paid_until_tick?: number;
+  // Personal
+  personal_service?: string;
+  bonus_type?: string;
+  bonus_value?: number;
+  // Faction
+  faction_id?: string;
+  faction_service?: string;
+  capacity?: number;
+  // Station service
+  service?: string;
+  // Level (for upgrade display)
+  level?: number;
+}
+
+/** Upgrade option returned by the 'upgrades' action */
+export interface FacilityUpgrade {
+  facility_id: string;
+  current_type: string;
+  current_name: string;
+  upgrade_type: string;
+  upgrade_name: string;
+  upgrade_cost: number;
+  upgrade_materials?: FacilityBuildMaterial[];
+  buildable?: boolean;
+}
+
+/** Locked upgrade — requires skill or other prerequisite */
+export interface FacilityLockedUpgrade {
+  your_facility_id: string;
+  your_facility_name: string;
+  your_facility_type: string;
+  current_level: number;
+  requires: string;
+  upgrade_to: {
+    type_id: string;
+    name: string;
+    category: string;
+    level: number;
+    description?: string;
+    build_cost: number;
+    build_materials?: FacilityBuildMaterial[];
+    build_time?: number;
+    labor_cost?: number;
+    rent_per_cycle?: number;
+  };
+}
+
+/** Personal quarters info returned by personal_visit */
+export interface PersonalQuartersInfo {
+  username: string;
+  station: string;
+  description: string;
+  access: 'public' | 'private';
+  facility_name?: string;
+  facility_level?: number;
+}
+
 export interface StorageData {
   station_id?: string;
   station_name?: string;

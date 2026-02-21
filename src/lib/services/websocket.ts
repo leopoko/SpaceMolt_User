@@ -7,7 +7,8 @@ import type {
   ForumThread, ForumReply, ForumCategory,
   TradeOffer,
   BattleStatus, BattleStance,
-  ShowroomShip, CommissionOrder, CommissionQuote, ShipListing
+  ShowroomShip, CommissionOrder, CommissionQuote, ShipListing,
+  FacilityType,
 } from '$lib/types/game';
 import { connectionStore } from '$lib/stores/connection.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
@@ -31,6 +32,7 @@ import { systemMemoStore } from '$lib/stores/systemMemo.svelte';
 import { explorerStore } from '$lib/stores/explorer.svelte';
 import { scavengerStore } from '$lib/stores/scavenger.svelte';
 import { tradeStore } from '$lib/stores/trade.svelte';
+import { facilityStore } from '$lib/stores/facility.svelte';
 import { loopStore } from '$lib/stores/loop.svelte';
 import { userDataSync } from '$lib/services/userDataSync';
 import { setCurrentUser } from '$lib/stores/storagePrefix';
@@ -1362,7 +1364,109 @@ class WebSocketService {
           } else if (Array.isArray(raw.modules)) {
             shipStore.updateModules(raw.modules as Module[]);
           }
-        } else if (pl.pending) {
+        }
+        // ---- Facility responses ----
+        // facility list: { station_facilities, player_facilities, faction_facilities, base_id }
+        else if ((msg.payload as Record<string, unknown>)?.station_facilities || (msg.payload as Record<string, unknown>)?.player_facilities) {
+          const raw = msg.payload as Record<string, unknown>;
+          facilityStore.setFacilities({
+            station_facilities: (raw.station_facilities as never[]) ?? [],
+            player_facilities: (raw.player_facilities as never[]) ?? [],
+            faction_facilities: (raw.faction_facilities as never[]) ?? [],
+          });
+        }
+        // facility types detail: single type with type_id (no categories)
+        else if (pl.action === 'types' && (msg.payload as Record<string, unknown>)?.type_id) {
+          const raw = msg.payload as Record<string, unknown>;
+          // Normalize: detail uses type_id, list uses id
+          if (!raw.id && raw.type_id) raw.id = raw.type_id;
+          facilityStore.setSelectedType(raw as never);
+        }
+        // facility types catalog: browse list — has categories or types array
+        else if (pl.action === 'types' && ((msg.payload as Record<string, unknown>)?.categories || Array.isArray((msg.payload as Record<string, unknown>)?.types))) {
+          const raw = msg.payload as Record<string, unknown>;
+          const pageNum = (raw.page as number) ?? 1;
+          const totalPages = (raw.total_pages as number) ?? 1;
+          const typesArr = (raw.types as FacilityType[] | undefined) ?? [];
+
+          // Check if this is a background recipe mapping response
+          if (facilityStore.recipeMappingStatus === 'loading' && pageNum === facilityStore.recipeMappingPage) {
+            facilityStore.onRecipeMappingPage(typesArr, pageNum, totalPages);
+            // Chain next page if needed
+            if (facilityStore.recipeMappingStatus === 'loading' && facilityStore.recipeMappingPage > 0) {
+              this.fetchRecipeMappingPage(facilityStore.recipeMappingPage);
+            }
+          } else {
+            // Normal user browse
+            facilityStore.setTypes({
+              types: typesArr as never[],
+              categories: (raw.categories as never) ?? facilityStore.categories,
+              total: (raw.total as number) ?? 0,
+              page: pageNum,
+              total_pages: totalPages,
+            });
+          }
+        }
+        // facility build/toggle/upgrade/transfer — mutation-like with message
+        else if (pl.action === 'build' && (msg.payload as Record<string, unknown>)?.facility_id) {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Facility built!' });
+          this.facilityList();
+        }
+        else if (pl.action === 'toggle') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Facility toggled' });
+          this.facilityList();
+        }
+        else if (pl.action === 'upgrade' && (msg.payload as Record<string, unknown>)?.new_facility_id) {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Facility upgraded!' });
+          this.facilityList();
+        }
+        else if (pl.action === 'transfer') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Facility transferred' });
+          this.facilityList();
+        }
+        else if (pl.action === 'personal_build') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Personal facility built!' });
+          this.facilityList();
+        }
+        else if (pl.action === 'faction_build') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Faction facility built!' });
+          this.facilityList();
+        }
+        else if (pl.action === 'faction_list' && (msg.payload as Record<string, unknown>)?.faction_facilities) {
+          // faction_list returns only faction facilities
+          const raw = msg.payload as Record<string, unknown>;
+          facilityStore.factionFacilities = (raw.faction_facilities as never[]) ?? [];
+        }
+        // upgrades: list of available upgrades (server may not include 'action' field)
+        // Detect by: has 'upgrades' array (even empty) + 'hint' containing 'upgrade' or 'locked_upgrades' present
+        else if (
+          Array.isArray((msg.payload as Record<string, unknown>)?.upgrades) &&
+          (pl.action === 'upgrades' || (msg.payload as Record<string, unknown>)?.locked_upgrades !== undefined ||
+           (typeof (msg.payload as Record<string, unknown>)?.hint === 'string' && ((msg.payload as Record<string, unknown>)?.hint as string).includes('upgrade')))
+        ) {
+          const raw = msg.payload as Record<string, unknown>;
+          facilityStore.setUpgrades(
+            (raw.upgrades as never[]) ?? [],
+            Array.isArray(raw.locked_upgrades) ? (raw.locked_upgrades as never[]) : [],
+          );
+        }
+        // personal_decorate: success response
+        else if (pl.action === 'personal_decorate') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Quarters updated!' });
+        }
+        // personal_visit: returns quarters description
+        else if (pl.action === 'personal_visit') {
+          const raw = msg.payload as Record<string, unknown>;
+          facilityStore.setQuartersInfo({
+            username: (raw.username as string) ?? '',
+            station: (raw.station as string) ?? '',
+            description: (raw.description as string) ?? '',
+            access: (raw.access as 'public' | 'private') ?? 'private',
+            facility_name: raw.facility_name as string | undefined,
+            facility_level: raw.facility_level as number | undefined,
+          });
+        }
+        else if (pl.pending) {
           // Mutation accepted, will execute on next tick
           if (pl.message) {
             eventsStore.add({ type: 'info', message: pl.message });
@@ -1764,6 +1868,69 @@ class WebSocketService {
   withdrawCredits(amount: number) { this.send({ type: 'withdraw_credits', payload: { amount } }); }
 
   setHomeBase(baseId: string) { this.send({ type: 'set_home_base', payload: { base_id: baseId } }); }
+
+  // ---- Facilities ----
+
+  facilityList() {
+    facilityStore.loading = true;
+    this.send({ type: 'facility', payload: { action: 'list' } });
+  }
+
+  facilityTypes(opts?: { category?: string; name?: string; level?: number; page?: number; per_page?: number; facility_type?: string }) {
+    facilityStore.typesLoading = true;
+    this.send({ type: 'facility', payload: { action: 'types', ...opts } });
+  }
+
+  /** Fetch a page of production facility types for background recipe mapping */
+  fetchRecipeMappingPage(page: number) {
+    this.send({ type: 'facility', payload: { action: 'types', category: 'production', per_page: 50, page } });
+  }
+
+  facilityBuild(facilityType: string) {
+    this.send({ type: 'facility', payload: { action: 'build', facility_type: facilityType } });
+  }
+
+  facilityToggle(facilityId: string) {
+    this.send({ type: 'facility', payload: { action: 'toggle', facility_id: facilityId } });
+  }
+
+  facilityUpgrades() {
+    facilityStore.upgradesLoading = true;
+    this.send({ type: 'facility', payload: { action: 'upgrades' } });
+  }
+
+  facilityUpgrade(facilityId: string, facilityType: string) {
+    this.send({ type: 'facility', payload: { action: 'upgrade', facility_id: facilityId, facility_type: facilityType } });
+  }
+
+  facilityTransfer(facilityId: string, direction: 'to_faction' | 'to_player', playerId?: string) {
+    const payload: Record<string, string> = { action: 'transfer', facility_id: facilityId, direction };
+    if (playerId) payload.player_id = playerId;
+    this.send({ type: 'facility', payload });
+  }
+
+  facilityPersonalBuild(facilityType: string) {
+    this.send({ type: 'facility', payload: { action: 'personal_build', facility_type: facilityType } });
+  }
+
+  facilityFactionBuild(facilityType: string) {
+    this.send({ type: 'facility', payload: { action: 'faction_build', facility_type: facilityType } });
+  }
+
+  facilityFactionList() {
+    this.send({ type: 'facility', payload: { action: 'faction_list' } });
+  }
+
+  facilityPersonalDecorate(description: string, access: 'public' | 'private') {
+    this.send({ type: 'facility', payload: { action: 'personal_decorate', description, access } });
+  }
+
+  facilityPersonalVisit(username?: string) {
+    facilityStore.quartersLoading = true;
+    const payload: Record<string, string> = { action: 'personal_visit' };
+    if (username) payload.username = username;
+    this.send({ type: 'facility', payload });
+  }
 
   // ---- Faction ----
 

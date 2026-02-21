@@ -8,6 +8,7 @@
   import { playerStore } from '$lib/stores/player.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { uiStore } from '$lib/stores/ui.svelte';
+  import { facilityStore } from '$lib/stores/facility.svelte';
   import { marketMemoStore } from '$lib/stores/marketMemo.svelte';
   import { bookmarkStore } from '$lib/stores/bookmark.svelte';
   import { eventsStore } from '$lib/stores/events.svelte';
@@ -198,6 +199,14 @@
   $effect(() => {
     if (allRecipes.length === 0) {
       loadRecipes();
+    }
+  });
+
+  // Auto-start recipe→facility mapping when CraftingTab opens
+  $effect(() => {
+    if (allRecipes.length > 0 && facilityStore.recipeMappingStatus === 'idle') {
+      facilityStore.startRecipeMapping();
+      ws.fetchRecipeMappingPage(1);
     }
   });
 </script>
@@ -422,6 +431,25 @@
             {#each Object.entries(recipe.required_skills) as [skill, level]}
               <span class="skill-badge">{formatSkillName(skill)} Lv.{level}</span>
             {/each}
+          </div>
+        {/if}
+
+        <!-- Required Facility -->
+        {@const facilityInfo = facilityStore.getFacilityForRecipe(recipe.id)}
+        {#if facilityInfo}
+          <div class="facility-req">
+            <span class="material-icons" style="font-size:14px;color:#ff9800">factory</span>
+            <span class="facility-req-name">{facilityInfo.name}</span>
+            <span class="mono" style="color:#ffd700;font-size:0.65rem">₡{facilityInfo.build_cost.toLocaleString()}</span>
+            <button class="item-search-btn" title="View facility details"
+              onclick={() => uiStore.navigateToFacilityDetail(facilityInfo.id)}>
+              <span class="material-icons item-search-icon">open_in_new</span>
+            </button>
+          </div>
+        {:else if facilityStore.recipeMappingStatus === 'loading'}
+          <div class="facility-req loading">
+            <span class="material-icons" style="font-size:13px;color:#78909c;animation:spin 1s linear infinite">sync</span>
+            <span style="font-size:0.68rem;color:#78909c">Loading facility data...</span>
           </div>
         {/if}
 
@@ -910,5 +938,30 @@
 
   .item-search-icon {
     font-size: 14px;
+  }
+
+  /* Facility requirement */
+  .facility-req {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 5px 8px;
+    background: rgba(255,152,0,0.05);
+    border: 1px solid rgba(255,152,0,0.12);
+    border-radius: 3px;
+  }
+  .facility-req.loading {
+    background: rgba(255,255,255,0.02);
+    border-color: rgba(255,255,255,0.06);
+  }
+  .facility-req-name {
+    font-size: 0.75rem;
+    color: #e0e0e0;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>
