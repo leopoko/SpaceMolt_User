@@ -8,7 +8,7 @@
  * the previous home base is cleared and the new one is set.
  */
 
-import { prefixKey } from './storagePrefix';
+import { userKey, migrateToUserKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_explorer';
 
@@ -16,15 +16,25 @@ class ExplorerStore {
   homeBaseSystemId = $state<string | null>(null);
 
   constructor() {
+    this.loadFromStorage();
+  }
+
+  private loadFromStorage() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(prefixKey(STORAGE_KEY));
+        const saved = localStorage.getItem(userKey(STORAGE_KEY));
         if (saved) {
           const data = JSON.parse(saved);
           this.homeBaseSystemId = data.homeBaseSystemId ?? null;
         }
       } catch { /* ignore */ }
     }
+  }
+
+  /** Reload from localStorage after user switch. Migrates old data if needed. */
+  reload() {
+    migrateToUserKey(STORAGE_KEY);
+    this.loadFromStorage();
   }
 
   /** Set the home base system. Clears any previous home base. */
@@ -40,7 +50,7 @@ class ExplorerStore {
 
   private persist() {
     try {
-      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify({
+      localStorage.setItem(userKey(STORAGE_KEY), JSON.stringify({
         homeBaseSystemId: this.homeBaseSystemId,
       }));
     } catch { /* ignore */ }
@@ -48,7 +58,7 @@ class ExplorerStore {
 
   reset() {
     this.homeBaseSystemId = null;
-    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
+    try { localStorage.removeItem(userKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 

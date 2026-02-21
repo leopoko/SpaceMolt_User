@@ -1,11 +1,11 @@
 import type { Recipe } from '$lib/types/game';
-import { prefixKey } from './storagePrefix';
+import { userKey, migrateToUserKey } from './storagePrefix';
 
 const FAVORITES_KEY = 'sm_crafting_favorites';
 
 function loadFavorites(): Set<string> {
   try {
-    const raw = localStorage.getItem(prefixKey(FAVORITES_KEY));
+    const raw = localStorage.getItem(userKey(FAVORITES_KEY));
     if (raw) return new Set(JSON.parse(raw) as string[]);
   } catch { /* ignore */ }
   return new Set();
@@ -13,7 +13,7 @@ function loadFavorites(): Set<string> {
 
 function saveFavorites(ids: Set<string>) {
   try {
-    localStorage.setItem(prefixKey(FAVORITES_KEY), JSON.stringify([...ids]));
+    localStorage.setItem(userKey(FAVORITES_KEY), JSON.stringify([...ids]));
   } catch { /* ignore */ }
 }
 
@@ -23,6 +23,12 @@ class CraftingStore {
   craftCount = $state(1);
   lastResult = $state<string | null>(null);
   favoriteIds = $state<Set<string>>(loadFavorites());
+
+  /** Reload favorites from localStorage after user switch. Migrates old data if needed. */
+  reload() {
+    migrateToUserKey(FAVORITES_KEY);
+    this.favoriteIds = loadFavorites();
+  }
 
   /** Accept the Record<id, Recipe> format from get_recipes and convert to array */
   setRecipes(recipesMap: Record<string, Recipe>) {

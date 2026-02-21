@@ -12,6 +12,7 @@
   import { mapSettingsStore } from '$lib/stores/mapSettings.svelte';
   import { ws } from '$lib/services/websocket';
   import { userDataSync } from '$lib/services/userDataSync';
+  import { setCurrentUser } from '$lib/stores/storagePrefix';
 
   let serverUrl = $state(connectionStore.serverUrl);
   let savedUser = $state(authStore.savedUsername);
@@ -43,6 +44,7 @@
     authStore.logout();
     resetAllGameStores();
     userDataSync.reset();
+    setCurrentUser('');
   }
 
   function saveCredentials() {

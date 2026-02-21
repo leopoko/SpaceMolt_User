@@ -8,7 +8,7 @@
 
 import type { CargoItem, BaseInfo, BaseServices } from '$lib/types/game';
 import { userDataSync } from '$lib/services/userDataSync';
-import { prefixKey } from './storagePrefix';
+import { userKey, migrateToUserKey } from './storagePrefix';
 
 const STORAGE_KEY = 'sm_storage_memos';
 
@@ -35,16 +35,28 @@ class StorageMemoStore {
   memos = $state<Record<string, StorageMemo>>({});
 
   constructor() {
+    this.loadFromStorage();
+  }
+
+  private loadFromStorage() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(prefixKey(STORAGE_KEY));
+        const saved = localStorage.getItem(userKey(STORAGE_KEY));
         if (saved) {
           this.memos = JSON.parse(saved);
+        } else {
+          this.memos = {};
         }
       } catch {
-        // ignore parse errors
+        this.memos = {};
       }
     }
+  }
+
+  /** Reload from localStorage after user switch. Migrates old data if needed. */
+  reload() {
+    migrateToUserKey(STORAGE_KEY);
+    this.loadFromStorage();
   }
 
   get allMemos(): StorageMemo[] {
@@ -110,7 +122,7 @@ class StorageMemoStore {
 
   private persist() {
     try {
-      localStorage.setItem(prefixKey(STORAGE_KEY), JSON.stringify(this.memos));
+      localStorage.setItem(userKey(STORAGE_KEY), JSON.stringify(this.memos));
     } catch {
       // ignore storage errors
     }
@@ -119,7 +131,7 @@ class StorageMemoStore {
 
   reset() {
     this.memos = {};
-    try { localStorage.removeItem(prefixKey(STORAGE_KEY)); } catch { /* ignore */ }
+    try { localStorage.removeItem(userKey(STORAGE_KEY)); } catch { /* ignore */ }
   }
 }
 

@@ -1,5 +1,5 @@
 import type { Player, Skill, Mission, Achievement, PlayerStats } from '$lib/types/game';
-import { prefixKey } from './storagePrefix';
+import { userKey, migrateToUserKey } from './storagePrefix';
 
 const DOCK_KEY = 'sm_dock_state';
 
@@ -7,9 +7,13 @@ class PlayerStore {
   data = $state<Player | null>(null);
 
   constructor() {
+    this.loadFromStorage();
+  }
+
+  private loadFromStorage() {
     if (typeof localStorage !== 'undefined') {
       try {
-        const saved = localStorage.getItem(prefixKey(DOCK_KEY));
+        const saved = localStorage.getItem(userKey(DOCK_KEY));
         if (saved) {
           const partial = JSON.parse(saved) as Pick<Player, 'docked_at_base' | 'current_poi' | 'status' | 'poi_id'>;
           this.data = partial as Player;
@@ -18,6 +22,12 @@ class PlayerStore {
         // ignore parse errors
       }
     }
+  }
+
+  /** Reload dock state from localStorage after user switch. Migrates old data if needed. */
+  reload() {
+    migrateToUserKey(DOCK_KEY);
+    this.loadFromStorage();
   }
 
   // ---- Getters ----
@@ -110,7 +120,7 @@ class PlayerStore {
     }
     // Persist dock-relevant fields for page-reload survival
     try {
-      localStorage.setItem(prefixKey(DOCK_KEY), JSON.stringify({
+      localStorage.setItem(userKey(DOCK_KEY), JSON.stringify({
         status: this.data?.status ?? null,
         docked_at_base: this.data?.docked_at_base ?? null,
         current_poi: this.data?.current_poi ?? null,
@@ -123,7 +133,7 @@ class PlayerStore {
 
   reset() {
     this.data = null;
-    try { localStorage.removeItem(prefixKey(DOCK_KEY)); } catch { /* ignore */ }
+    try { localStorage.removeItem(userKey(DOCK_KEY)); } catch { /* ignore */ }
   }
 }
 
