@@ -116,12 +116,24 @@ body {
 }
 
 @media (max-width: 600px) {
-  .bottom-panel {
+  .bottom-panel:not(.mobile-bottom-panel) {
     grid-template-columns: 1fr !important;
   }
-  /* Show only EventLog */
-  .bottom-panel > :nth-child(n+2) {
+  /* Show only EventLog (desktop fallback only) */
+  .bottom-panel:not(.mobile-bottom-panel) > :nth-child(n+2) {
     display: none;
+  }
+}
+
+/* ---- Mobile overrides ---- */
+@media (max-width: 768px) {
+  .tab-content {
+    padding: 8px 10px;
+  }
+  .status-bar {
+    padding: 3px 10px;
+    gap: 0.4rem;
+    font-size: 0.65rem;
   }
 }
 

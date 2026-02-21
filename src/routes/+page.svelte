@@ -4,6 +4,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { uiStore, TABS } from '$lib/stores/ui.svelte';
   import { battleStore } from '$lib/stores/battle.svelte';
+  import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
   import { prefixKey } from '$lib/stores/storagePrefix';
   import LoginScreen from '$lib/components/LoginScreen.svelte';
   import StatusBar from '$lib/components/StatusBar.svelte';
@@ -166,6 +167,19 @@
     return mainCols;
   });
 
+  // ======== Mobile detection ========
+  type MobileBottomTab = 'log' | 'chat' | 'queue';
+  let isMobile = $state(false);
+  let mobileBottomTab = $state<MobileBottomTab>('log');
+
+  $effect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    isMobile = mq.matches;
+    const handler = (e: MediaQueryListEvent) => { isMobile = e.matches; };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
   // ======== Tab bar horizontal scroll ========
   let tabBarWrapperEl: HTMLDivElement | undefined = $state(undefined);
 
@@ -226,56 +240,101 @@
       {/if}
     </main>
 
-    <!-- Vertical resize handle (bottom panel height) -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="height-handle" bind:this={heightHandleEl} onmousedown={(e) => startDrag('height', e)}>
-      <button class="map-toggle" onclick={toggleMap} title={showMap ? 'Hide Map' : 'Show Map'}>
-        <span class="material-icons" style="font-size:14px">{showMap ? 'map' : 'map'}</span>
-        MAP
-      </button>
-    </div>
-
-    <div
-      class="bottom-panel"
-      bind:this={bottomPanelEl}
-      style="grid-template-columns: {gridColumns}; height: {bottomHeight}px;"
-    >
-      <EventLog />
-
-      <!-- EventLog ↔ Chat handle -->
+    {#if isMobile}
+      <!-- ======== Mobile bottom panel ======== -->
+      <div class="bottom-panel mobile-bottom-panel" style="height: 180px;">
+        <div class="mobile-bp-tabs">
+          <button
+            class="mobile-bp-tab"
+            class:active={mobileBottomTab === 'log'}
+            onclick={() => mobileBottomTab = 'log'}
+          >
+            <span class="material-icons" style="font-size:14px">list</span>
+            Log
+          </button>
+          <button
+            class="mobile-bp-tab"
+            class:active={mobileBottomTab === 'chat'}
+            onclick={() => mobileBottomTab = 'chat'}
+          >
+            <span class="material-icons" style="font-size:14px">chat</span>
+            Chat
+          </button>
+          <button
+            class="mobile-bp-tab"
+            class:active={mobileBottomTab === 'queue'}
+            onclick={() => mobileBottomTab = 'queue'}
+          >
+            <span class="material-icons" style="font-size:14px">queue</span>
+            Queue
+            {#if actionQueueStore.items.length > 0}
+              <span class="mobile-bp-badge">{actionQueueStore.items.length}</span>
+            {/if}
+          </button>
+        </div>
+        <div class="mobile-bp-content">
+          {#if mobileBottomTab === 'log'}
+            <EventLog />
+          {:else if mobileBottomTab === 'chat'}
+            <ChatPanel />
+          {:else}
+            <ActionQueue />
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <!-- ======== Desktop bottom panel ======== -->
+      <!-- Vertical resize handle (bottom panel height) -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="height-handle" bind:this={heightHandleEl} onmousedown={(e) => startDrag('height', e)}>
+        <button class="map-toggle" onclick={toggleMap} title={showMap ? 'Hide Map' : 'Show Map'}>
+          <span class="material-icons" style="font-size:14px">{showMap ? 'map' : 'map'}</span>
+          MAP
+        </button>
+      </div>
+
       <div
-        class="resize-handle-v"
-        onmousedown={(e) => startDrag('event-chat', e)}
-      ></div>
+        class="bottom-panel"
+        bind:this={bottomPanelEl}
+        style="grid-template-columns: {gridColumns}; height: {bottomHeight}px;"
+      >
+        <EventLog />
 
-      <ChatPanel />
-
-      <!-- Chat ↔ ActionQueue handle -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="resize-handle-v"
-        onmousedown={(e) => startDrag('chat-aq', e)}
-      ></div>
-
-      <ActionQueue />
-
-      <!-- Map section (conditional) -->
-      {#if showMap}
+        <!-- EventLog ↔ Chat handle -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="resize-handle-v"
-          onmousedown={(e) => startDrag('map', e)}
+          onmousedown={(e) => startDrag('event-chat', e)}
         ></div>
-        <div class="map-container">
-          <iframe
-            src="https://www.spacemolt.com/map"
-            title="SpaceMolt Map"
-            class="map-iframe"
-          ></iframe>
-        </div>
-      {/if}
-    </div>
+
+        <ChatPanel />
+
+        <!-- Chat ↔ ActionQueue handle -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="resize-handle-v"
+          onmousedown={(e) => startDrag('chat-aq', e)}
+        ></div>
+
+        <ActionQueue />
+
+        <!-- Map section (conditional) -->
+        {#if showMap}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="resize-handle-v"
+            onmousedown={(e) => startDrag('map', e)}
+          ></div>
+          <div class="map-container">
+            <iframe
+              src="https://www.spacemolt.com/map"
+              title="SpaceMolt Map"
+              class="map-iframe"
+            ></iframe>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -377,6 +436,70 @@
   /* Prevent text selection while dragging */
   .dragging {
     user-select: none;
+  }
+
+  /* ======== Mobile bottom panel ======== */
+  .mobile-bottom-panel {
+    display: flex !important;
+    flex-direction: column;
+    flex-shrink: 0;
+    background: rgba(4, 8, 18, 0.9);
+    border-top: 1px solid rgba(79, 195, 247, 0.15);
+  }
+
+  .mobile-bp-tabs {
+    display: flex;
+    gap: 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(79, 195, 247, 0.1);
+    background: rgba(4, 8, 18, 0.95);
+  }
+
+  .mobile-bp-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #4a6070;
+    font-size: 0.68rem;
+    font-family: 'Roboto Mono', monospace;
+    font-weight: 500;
+    padding: 6px 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .mobile-bp-tab:hover {
+    color: #90caf9;
+    background: rgba(79, 195, 247, 0.04);
+  }
+
+  .mobile-bp-tab.active {
+    color: #4fc3f7;
+    border-bottom-color: #4fc3f7;
+    background: rgba(79, 195, 247, 0.06);
+  }
+
+  .mobile-bp-badge {
+    font-size: 0.55rem;
+    background: rgba(79, 195, 247, 0.2);
+    color: #4fc3f7;
+    border-radius: 8px;
+    padding: 0 4px;
+    min-width: 14px;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .mobile-bp-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   /* ---- Red combat overlay when in battle ---- */
