@@ -36,6 +36,9 @@ class UiStore {
   craftingSearch = $state('');
   craftingSearchMode = $state<'all' | 'input' | 'output'>('all');
 
+  // Cross-tab navigation: Facility detail prefill
+  facilityDetailId = $state('');
+
   setTab(tab: TabDef) {
     this.activeTab = tab;
   }
@@ -50,6 +53,12 @@ class UiStore {
   /** Navigate to Navigation tab */
   navigateToNavigation() {
     this.activeTab = TABS.find(t => t.label === 'Navigation') ?? TABS[0];
+  }
+
+  /** Navigate to Base tab → Facility detail */
+  navigateToFacilityDetail(facilityTypeId: string) {
+    this.facilityDetailId = facilityTypeId;
+    this.activeTab = TABS.find(t => t.label === 'Base') ?? TABS[7];
   }
 
   setDarkMode(val: boolean) {

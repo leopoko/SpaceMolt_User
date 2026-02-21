@@ -1,10 +1,19 @@
 <script lang="ts">
   import { loopStore } from '$lib/stores/loop.svelte';
+  import { uiStore } from '$lib/stores/ui.svelte';
   import StationSubTab from './base/StationSubTab.svelte';
   import LoopSubTab from './base/LoopSubTab.svelte';
   import StorageMemoSubTab from './base/StorageMemoSubTab.svelte';
+  import FacilitySubTab from './base/FacilitySubTab.svelte';
 
-  let activeSubTab = $state<'station' | 'memo' | 'loop'>('station');
+  let activeSubTab = $state<'station' | 'memo' | 'loop' | 'facility'>('station');
+
+  // Cross-tab navigation: switch to Facility sub-tab when navigating from CraftingTab
+  $effect(() => {
+    if (uiStore.facilityDetailId) {
+      activeSubTab = 'facility';
+    }
+  });
 </script>
 
 <div class="base-container">
@@ -27,6 +36,14 @@
     </button>
     <button
       class="sub-tab"
+      class:active={activeSubTab === 'facility'}
+      onclick={() => (activeSubTab = 'facility')}
+    >
+      <span class="material-icons sub-tab-icon">precision_manufacturing</span>
+      Facility
+    </button>
+    <button
+      class="sub-tab"
       class:active={activeSubTab === 'loop'}
       onclick={() => (activeSubTab = 'loop')}
     >
@@ -45,6 +62,8 @@
       <StationSubTab />
     {:else if activeSubTab === 'memo'}
       <StorageMemoSubTab />
+    {:else if activeSubTab === 'facility'}
+      <FacilitySubTab />
     {:else}
       <LoopSubTab />
     {/if}
