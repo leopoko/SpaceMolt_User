@@ -3,11 +3,13 @@
   import { combatStore } from '$lib/stores/combat.svelte';
   import { systemStore } from '$lib/stores/system.svelte';
   import { actionQueueStore } from '$lib/stores/actionQueue.svelte';
+  import { shipStore } from '$lib/stores/ship.svelte';
   import { ws } from '$lib/services/websocket';
   import { chatStore } from '$lib/stores/chat.svelte';
   import ScavengerSubTab from './ScavengerSubTab.svelte';
   import BattleSubTab from './BattleSubTab.svelte';
   import { battleStore } from '$lib/stores/battle.svelte';
+  import type { Module, CargoItem } from '$lib/types/game';
 
   // ---- Sub-tab state ----
   type SubTab = 'combat' | 'scavenger';
@@ -118,6 +120,40 @@
     if (!selectedTargetId) return undefined;
     return combatStore.getTargetScan(selectedTargetId);
   });
+
+  // ---- Weapons & Reload (non-battle view) ----
+  let weaponModules = $derived.by((): Module[] => {
+    return shipStore.moduleData.filter(m => m.type === 'weapon' && m.ammo_type);
+  });
+
+  function getCompatibleAmmo(ammoType: string): CargoItem[] {
+    return shipStore.cargo.filter(c => {
+      if (c.effect?.type === 'ammo' && c.effect?.subtype === ammoType) return true;
+      const id = c.item_id ?? '';
+      if (ammoType === 'autocannon' && id.startsWith('rounds_')) return true;
+      if (ammoType === 'railgun' && id.startsWith('slugs_')) return true;
+      if (ammoType === 'torpedo' && id.startsWith('torpedoes_')) return true;
+      return false;
+    });
+  }
+
+  let expandedWeaponId = $state<string | null>(null);
+
+  function toggleWeaponExpand(weaponId: string) {
+    expandedWeaponId = expandedWeaponId === weaponId ? null : weaponId;
+  }
+
+  function doReload(weapon: Module, ammoItemId: string) {
+    actionQueueStore.enqueue(`Reload: ${weapon.name}`, () => ws.reload(weapon.id, ammoItemId), {
+      command: { type: 'reload', params: { weapon_instance_id: weapon.id, ammo_item_id: ammoItemId } }
+    });
+    expandedWeaponId = null;
+  }
+
+  function magazinePercent(weapon: Module): number {
+    if (!weapon.magazine_size || weapon.magazine_size <= 0) return 0;
+    return Math.min(((weapon.magazine_current ?? 0) / weapon.magazine_size) * 100, 100);
+  }
 </script>
 
 <!-- Sub-tab bar -->
@@ -390,6 +426,74 @@
       </Content>
     </Card>
   </div>
+
+  <!-- Weapons / Reload (always visible when weapons equipped) -->
+  {#if weaponModules.length > 0}
+    <Card class="space-card weapons-card-standalone">
+      <Content>
+        <p class="tab-section-title">
+          <span class="material-icons" style="font-size:16px;vertical-align:middle">local_fire_department</span>
+          Weapons / Reload
+        </p>
+        <div class="weapon-grid">
+          {#each weaponModules as weapon (weapon.id)}
+            {@const magPct = magazinePercent(weapon)}
+            {@const magCurrent = weapon.magazine_current ?? 0}
+            {@const magSize = weapon.magazine_size ?? 0}
+            {@const compatAmmo = getCompatibleAmmo(weapon.ammo_type ?? '')}
+            {@const isExpanded = expandedWeaponId === weapon.id}
+            <div class="weapon-card" class:weapon-empty={magCurrent === 0}>
+              <button class="weapon-header" onclick={() => toggleWeaponExpand(weapon.id)}>
+                <div class="weapon-info">
+                  <span class="weapon-name">{weapon.name}</span>
+                  <span class="weapon-meta mono">{weapon.ammo_type} · {weapon.damage ?? '?'} dmg</span>
+                </div>
+                <div class="weapon-mag">
+                  <div class="mag-bar-bg">
+                    <div
+                      class="mag-bar-fill"
+                      class:mag-low={magPct < 25}
+                      class:mag-mid={magPct >= 25 && magPct < 60}
+                      class:mag-ok={magPct >= 60}
+                      style="width: {magPct}%"
+                    ></div>
+                  </div>
+                  <span class="mag-text mono">{magCurrent}/{magSize}</span>
+                </div>
+                <span class="material-icons expand-icon" class:expanded={isExpanded}>
+                  expand_more
+                </span>
+              </button>
+
+              {#if isExpanded}
+                <div class="ammo-panel">
+                  {#if compatAmmo.length > 0}
+                    <div class="ammo-list">
+                      {#each compatAmmo as ammo (ammo.item_id)}
+                        <button
+                          class="ammo-row"
+                          onclick={() => doReload(weapon, ammo.item_id)}
+                        >
+                          <span class="material-icons reload-icon">refresh</span>
+                          <span class="ammo-name">{ammo.name ?? ammo.item_id}</span>
+                          <span class="ammo-qty mono">×{ammo.quantity}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {:else}
+                    <div class="no-ammo">
+                      <span class="material-icons" style="font-size:14px">warning</span>
+                      No compatible ammo in cargo
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </Content>
+    </Card>
+  {/if}
   {/if}
 {:else if activeSubTab === 'scavenger'}
   <!-- === Scavenger Sub-Tab === -->
@@ -798,4 +902,181 @@
   }
 
   .mono { font-family: 'Roboto Mono', monospace; }
+
+  /* ---- Weapons / Reload (standalone) ---- */
+  .weapons-card-standalone {
+    margin-top: 8px;
+  }
+
+  .weapon-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .weapon-card {
+    border: 1px solid rgba(255, 152, 0, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .weapon-card.weapon-empty {
+    border-color: rgba(244, 67, 54, 0.25);
+  }
+
+  .weapon-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255, 152, 0, 0.04);
+    border: none;
+    color: #e0e0e0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    font-size: 0.75rem;
+    transition: background 0.15s;
+  }
+
+  .weapon-header:hover {
+    background: rgba(255, 152, 0, 0.08);
+  }
+
+  .weapon-empty .weapon-header {
+    background: rgba(244, 67, 54, 0.04);
+  }
+
+  .weapon-empty .weapon-header:hover {
+    background: rgba(244, 67, 54, 0.08);
+  }
+
+  .weapon-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .weapon-name {
+    font-weight: 600;
+    font-size: 0.73rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .weapon-meta {
+    font-size: 0.6rem;
+    color: #78909c;
+    text-transform: uppercase;
+  }
+
+  .weapon-mag {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .mag-bar-bg {
+    width: 50px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .mag-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .mag-bar-fill.mag-ok { background: #4caf50; }
+  .mag-bar-fill.mag-mid { background: #ff9800; }
+  .mag-bar-fill.mag-low { background: #f44336; }
+
+  .mag-text {
+    font-size: 0.65rem;
+    color: #b0bec5;
+    min-width: 45px;
+    text-align: right;
+  }
+
+  .expand-icon {
+    font-size: 18px;
+    color: #546e7a;
+    transition: transform 0.2s;
+  }
+
+  .expand-icon.expanded {
+    transform: rotate(180deg);
+  }
+
+  .ammo-panel {
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.15);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .ammo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .ammo-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid rgba(76, 175, 80, 0.15);
+    border-radius: 3px;
+    background: rgba(76, 175, 80, 0.04);
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: all 0.15s;
+    width: 100%;
+    text-align: left;
+  }
+
+  .ammo-row:hover {
+    background: rgba(76, 175, 80, 0.1);
+    border-color: rgba(76, 175, 80, 0.35);
+  }
+
+  .ammo-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ammo-qty {
+    font-size: 0.65rem;
+    color: #78909c;
+    flex-shrink: 0;
+  }
+
+  .reload-icon {
+    font-size: 16px;
+    color: #4caf50;
+    flex-shrink: 0;
+  }
+
+  .no-ammo {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: #78909c;
+    padding: 4px 0;
+  }
+
+  .no-ammo .material-icons {
+    color: #ff9800;
+  }
 </style>
