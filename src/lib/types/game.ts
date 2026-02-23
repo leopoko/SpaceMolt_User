@@ -305,6 +305,18 @@ export interface Module {
   mining_power?: number;
   mining_range?: number;
 
+  // Weapon-specific (from catalog & state_update)
+  damage?: number;
+  damage_type?: string;       // kinetic, thermal, explosive, void, etc.
+  ammo_type?: string;         // autocannon, railgun, torpedo, plasma, void_core, etc.
+  range?: number;
+  reach?: number;             // how many zones away it can hit
+  cooldown?: number;
+  magazine_size?: number;
+  magazine_current?: number;  // rounds currently loaded
+  loaded_ammo_id?: string;    // item_id of currently loaded ammo
+  special?: string;           // e.g., "armor_bypass_50"
+
   stats?: Record<string, number>;
 }
 
@@ -316,6 +328,11 @@ export interface CargoItem {
   quantity: number;
   volume?: number;      // not always present
   value?: number;       // not always present
+  effect?: {            // present on consumable items (ammo, buffs, etc.)
+    type?: string;      // "ammo", "buff", "repair", etc.
+    subtype?: string;   // for ammo: "autocannon", "railgun", "torpedo", etc.
+    [key: string]: unknown;
+  };
 }
 
 // ---- Fleet ----

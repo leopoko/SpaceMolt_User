@@ -411,6 +411,11 @@ class WebSocketService {
           eventsStore.add({ type: 'combat', message });
           // Auto-poll battle status when attack succeeds (entering battle)
           this.getBattleStatus();
+        } else if (cmd === 'reload' && result) {
+          const message = (result.message as string) ?? 'Weapon reloaded';
+          eventsStore.add({ type: 'combat', message });
+          // Refresh ship data to update module magazine & cargo
+          this.getStatus();
         } else if (cmd === 'deposit_credits' && result) {
           const amount = (result.amount as number) ?? 0;
           eventsStore.add({ type: 'trade', message: `Deposited ₡${amount.toLocaleString()} to station` });
@@ -1627,6 +1632,11 @@ class WebSocketService {
     } else {
       this.send({ type: 'scan' });
     }
+  }
+
+  /** Reload a weapon's magazine from ammo in cargo */
+  reload(weaponInstanceId: string, ammoItemId: string) {
+    this.send({ type: 'reload', payload: { weapon_instance_id: weaponInstanceId, ammo_item_id: ammoItemId } });
   }
 
   // ---- Battle (Zone-based PvP) ----
