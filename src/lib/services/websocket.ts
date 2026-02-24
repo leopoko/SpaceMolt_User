@@ -596,6 +596,8 @@ class WebSocketService {
             eventsStore.add({ type: 'info', message: `Action complete: ${action}` });
           }
         }
+        // Always refresh status after any mutation completes
+        this.getStatus();
         break;
       }
 
