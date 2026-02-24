@@ -30,9 +30,14 @@ class CraftingStore {
     this.favoriteIds = loadFavorites();
   }
 
-  /** Accept the Record<id, Recipe> format from get_recipes and convert to array */
+  /** Accept the Record<id, Recipe> format (legacy get_recipes) and convert to array */
   setRecipes(recipesMap: Record<string, Recipe>) {
     this.recipes = Object.values(recipesMap);
+  }
+
+  /** Accept an array of recipes (catalog type=recipes response) */
+  setRecipesList(recipes: Recipe[]) {
+    this.recipes = recipes;
   }
 
   /** Sorted unique category list derived from loaded recipes */

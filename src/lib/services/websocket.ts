@@ -1,5 +1,5 @@
 import type {
-  WsMessage, StateUpdate, StateUpdatePayload, WelcomePayload,
+  WsMessage, WelcomePayload, NearbyPlayer,
   CombatEvent, ScanResult, TargetScanResult, MarketData, MarketItem, MyOrder, StorageData,
   Faction, Recipe, FleetData, ChatMessage, EventLogEntry, Module,
   CatalogType, CatalogResponse,
@@ -58,6 +58,8 @@ class WebSocketService {
   private readonly maxReconnectDelay = 30000;
   private messageQueue: WsMessage[] = [];
   private manualDisconnect = false;
+  /** Periodic polling timer — replaces removed server-push state_update */
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   // ---- Lifecycle ----
 
@@ -91,6 +93,7 @@ class WebSocketService {
   disconnect() {
     this.manualDisconnect = true;
     this.cancelReconnect();
+    this.stopPolling();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -120,6 +123,7 @@ class WebSocketService {
 
   private onClose() {
     connectionStore.status = 'disconnected';
+    this.stopPolling();
     if (!this.manualDisconnect) {
       this.scheduleReconnect();
     }
@@ -138,6 +142,51 @@ class WebSocketService {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+  }
+
+  // ---- Periodic polling (replaces removed server-push state_update) ----
+
+  /**
+   * Start periodic get_status polling.
+   * Called after logged_in. Interval = tickRate seconds (matches server tick).
+   * Each poll: increment local tick, call getStatus(), getNearby() if undocked,
+   * and trigger action queue execution.
+   */
+  private startPolling() {
+    this.stopPolling();
+    const intervalMs = (connectionStore.tickRate || 10) * 1000;
+    this.pollTimer = setInterval(() => {
+      if (!authStore.isLoggedIn || connectionStore.status !== 'connected') return;
+
+      // Increment local tick counter
+      connectionStore.tick += 1;
+      connectionStore.lastTickTime = Date.now();
+
+      // Update travel ETA labels
+      systemStore.setTravel({ current_tick: connectionStore.tick });
+      if (actionQueueStore.holding && systemStore.travel.type === 'jump' && systemStore.travel.arrival_tick != null) {
+        const destName = systemStore.travel.destination_name ?? '...';
+        const remaining = systemStore.travel.arrival_tick - connectionStore.tick;
+        if (remaining > 0) {
+          actionQueueStore.updateCurrentLabel(`Jump → ${destName} (ETA ${remaining} tick${remaining !== 1 ? 's' : ''})`);
+        } else {
+          actionQueueStore.updateCurrentLabel(`Jump → ${destName} (arriving...)`);
+        }
+      }
+
+      // Execute queued actions (1 per tick)
+      actionQueueStore.executeNext(connectionStore.tick);
+
+      // Poll server for current state
+      this.getStatus();
+    }, intervalMs);
+  }
+
+  private stopPolling() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
   }
 
@@ -222,6 +271,8 @@ class WebSocketService {
         eventsStore.add({ type: 'system', message: `Logged in as ${authStore.username}` });
         // Sync user data (memos, bookmarks, etc.) from cloud
         userDataSync.init(authStore.savedUsername, authStore.savedPassword);
+        // Start periodic polling (replaces removed server-push state_update)
+        this.startPolling();
         break;
       }
 
@@ -291,57 +342,13 @@ class WebSocketService {
         break;
       }
 
-      case 'state_update': {
-        const pl = p<StateUpdatePayload>(msg);
-        if (pl.player) playerStore.update(pl.player);
-        if (pl.ship) shipStore.updateCurrent(pl.ship);
-        // modules: null means no modules; truthy array updates; undefined = no change
-        if (pl.modules === null) shipStore.updateModules([]);
-        else if (pl.modules) shipStore.updateModules(pl.modules);
-        if (pl.nearby) systemStore.setNearby(pl.nearby);
-        // NOTE: state_update.in_combat is unreliable for PvP battles (often false
-        // even during active battle). Only use battle_started / battle_ended messages
-        // for battleStore. Do NOT let in_combat:false clear battleStore.
-        if (pl.in_combat !== undefined) {
-          // Only trust in_combat for NPC pirate combat, not PvP battles
-          if (!battleStore.inBattle) {
-            combatStore.setInCombat(pl.in_combat);
-          }
-        }
-        // Also handle legacy fields (events, chat, system) for forward-compatibility
-        const legacy = pl as unknown as StateUpdate;
-        if (legacy.system) systemStore.update(legacy.system);
-        if (legacy.events) legacy.events.forEach(e => eventsStore.add(e));
-        if (legacy.chat) legacy.chat.forEach(c => chatStore.addMessage(c));
-        if (pl.tick !== undefined) {
-          const prevTick = connectionStore.tick;
-          connectionStore.tick = pl.tick;
-          connectionStore.lastTickTime = Date.now();
-          // Execute next queued action only when tick number advances
-          // (dedup via tick number in case both tick + state_update fire)
-          if (pl.tick > prevTick) {
-            actionQueueStore.executeNext(pl.tick);
-          }
-        }
-        break;
-      }
+      // state_update was removed server-side; use get_status polling on each tick instead.
 
       case 'tick': {
+        // Server may still send tick messages — use as authoritative tick sync
         const pl = p<{ tick?: number }>(msg);
         connectionStore.tick = pl.tick ?? connectionStore.tick + 1;
         connectionStore.lastTickTime = Date.now();
-        systemStore.setTravel({ current_tick: connectionStore.tick });
-        // Update jump ETA label if a persistent jump is holding the queue
-        if (actionQueueStore.holding && systemStore.travel.type === 'jump' && systemStore.travel.arrival_tick != null) {
-          const destName = systemStore.travel.destination_name ?? '...';
-          const remaining = systemStore.travel.arrival_tick - connectionStore.tick;
-          if (remaining > 0) {
-            actionQueueStore.updateCurrentLabel(`Jump → ${destName} (ETA ${remaining} tick${remaining !== 1 ? 's' : ''})`);
-          } else {
-            actionQueueStore.updateCurrentLabel(`Jump → ${destName} (arriving...)`);
-          }
-        }
-        actionQueueStore.executeNext(connectionStore.tick);
         break;
       }
 
@@ -515,6 +522,10 @@ class WebSocketService {
         } else if (cmd === 'cancel_commission') {
           eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Commission cancelled' });
           this.commissionStatus();
+        } else if (cmd === 'supply_commission') {
+          eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Materials supplied to commission' });
+          this.commissionStatus();
+          this.getStatus();
         } else if (cmd === 'sell_ship') {
           eventsStore.add({ type: 'info', message: (result?.message as string) ?? 'Ship sold' });
           this.listShips();
@@ -889,6 +900,10 @@ class WebSocketService {
       case 'catalog_result': {
         const pl = p<CatalogResponse>(msg);
         catalogStore.handleResponse(pl);
+        // Also populate craftingStore when catalog returns recipes
+        if (pl.type === 'recipes' && Array.isArray(pl.items)) {
+          craftingStore.setRecipesList(pl.items as unknown as Recipe[]);
+        }
         break;
       }
 
@@ -974,6 +989,13 @@ class WebSocketService {
         if (pl.action === 'get_battle_status') {
           const raw = msg.payload as Record<string, unknown>;
           battleStore.setStatus(raw as unknown as BattleStatus);
+          break;
+        }
+        // get_nearby response: { players: NearbyPlayer[] }
+        if (pl.action === 'get_nearby' || (!pl.action && Array.isArray((msg.payload as Record<string, unknown>)?.players) && !(msg.payload as Record<string, unknown>)?.ship)) {
+          const raw = msg.payload as Record<string, unknown>;
+          const players = Array.isArray(raw.players) ? (raw.players as NearbyPlayer[]) : [];
+          systemStore.setNearby(players);
           break;
         }
         if (pl.action === 'view_market' && pl.items) {
@@ -1087,8 +1109,13 @@ class WebSocketService {
           this.getFactionInfo();
           break;
         }
-        if (pl.action === 'faction_deposit_credits') {
-          eventsStore.add({ type: 'info', message: pl.message ?? 'Credits deposited' });
+        if (pl.action === 'faction_deposit_credits' || pl.action === 'faction_deposit_items') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Deposited to faction storage' });
+          this.getFactionInfo();
+          break;
+        }
+        if (pl.action === 'faction_withdraw_credits' || pl.action === 'faction_withdraw_items') {
+          eventsStore.add({ type: 'info', message: pl.message ?? 'Withdrawn from faction storage' });
           this.getFactionInfo();
           break;
         }
@@ -1311,10 +1338,13 @@ class WebSocketService {
           if (pl.poi) {
             systemStore.currentPoi = pl.poi as never;
           }
-        } else if ((pl as Record<string, unknown>).recipes && typeof (pl as Record<string, unknown>).recipes === 'object' && !Array.isArray((pl as Record<string, unknown>).recipes)) {
-          craftingStore.setRecipes((pl as Record<string, unknown>).recipes as Record<string, Recipe>);
         } else if (isCatalogResponse(pl)) {
-          catalogStore.handleResponse(pl as unknown as CatalogResponse);
+          const catPl = pl as unknown as CatalogResponse;
+          catalogStore.handleResponse(catPl);
+          // Also populate craftingStore when catalog returns recipes
+          if (catPl.type === 'recipes' && Array.isArray(catPl.items)) {
+            craftingStore.setRecipesList(catPl.items as unknown as Recipe[]);
+          }
         } else if (pl.action === 'view_storage' || ((msg.payload as Record<string, unknown>)?.base_id && (msg.payload as Record<string, unknown>)?.items)) {
           // Query response: view_storage — detected by action field or by base_id+items presence
           const raw = msg.payload as Record<string, unknown>;
@@ -1368,6 +1398,14 @@ class WebSocketService {
             shipStore.updateModules([]);
           } else if (Array.isArray(raw.modules)) {
             shipStore.updateModules(raw.modules as Module[]);
+          }
+          // Handle in_combat from get_status (only trust for NPC pirate combat, not PvP)
+          if (raw.in_combat !== undefined && !battleStore.inBattle) {
+            combatStore.setInCombat(raw.in_combat as boolean);
+          }
+          // Chain: poll nearby players (only when not docked to reduce chatter)
+          if (!playerStore.isDocked) {
+            this.getNearby();
           }
         }
         // ---- Facility responses ----
@@ -1605,6 +1643,7 @@ class WebSocketService {
 
   getStatus() { this.send({ type: 'get_status' }); }
   getSystem() { this.send({ type: 'get_system' }); }
+  getNearby() { this.send({ type: 'get_nearby' }); }
 
   travel(destinationId: string) {
     systemStore.setTravel({ in_progress: true, destination_id: destinationId, type: 'travel' });
@@ -1825,6 +1864,10 @@ class WebSocketService {
     this.send({ type: 'cancel_commission', payload: { commission_id: commissionId } });
   }
 
+  supplyCommission(commissionId: string, itemId: string, quantity: number) {
+    this.send({ type: 'supply_commission', payload: { commission_id: commissionId, item_id: itemId, quantity } });
+  }
+
   // ---- Shipyard: Player Ship Exchange ----
 
   browseShips(baseId?: string, classId?: string, maxPrice?: number) {
@@ -1855,7 +1898,8 @@ class WebSocketService {
 
   // ---- Crafting ----
 
-  getRecipes() { this.send({ type: 'get_recipes' }); }
+  /** get_recipes endpoint was removed; use catalog type=recipes instead */
+  getRecipes() { this.catalog('recipes', { page_size: 50 }); }
   craft(recipeId: string, count: number) {
     this.send({ type: 'craft', payload: { recipe_id: recipeId, count: Math.min(Math.max(1, count), 10) } });
   }
@@ -2040,7 +2084,21 @@ class WebSocketService {
   }
 
   factionDepositCredits(amount: number) {
-    this.send({ type: 'faction_deposit_credits', payload: { amount } });
+    // Unified: faction_deposit_items with item_id='credits' replaces faction_deposit_credits
+    this.send({ type: 'faction_deposit_items', payload: { item_id: 'credits', quantity: amount } });
+  }
+
+  factionDepositItems(itemId: string, quantity: number) {
+    this.send({ type: 'faction_deposit_items', payload: { item_id: itemId, quantity } });
+  }
+
+  factionWithdrawCredits(amount: number) {
+    // Unified: faction_withdraw_items with item_id='credits' replaces faction_withdraw_credits
+    this.send({ type: 'faction_withdraw_items', payload: { item_id: 'credits', quantity: amount } });
+  }
+
+  factionWithdrawItems(itemId: string, quantity: number) {
+    this.send({ type: 'faction_withdraw_items', payload: { item_id: itemId, quantity } });
   }
 
   factionViewInfo(factionId: string) {

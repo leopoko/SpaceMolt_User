@@ -3,7 +3,7 @@ import type { SystemInfo, POI, TravelState, NearbyPlayer } from '$lib/types/game
 class SystemStore {
   data = $state<SystemInfo | null>(null);
   currentPoi = $state<POI | null>(null);
-  // Nearby players from frequent state_update (overrides system_info.nearby_players)
+  // Nearby players from get_nearby polling (overrides system_info.nearby_players)
   nearbyFromUpdate = $state<NearbyPlayer[]>([]);
   travel = $state<TravelState>({
     in_progress: false,
